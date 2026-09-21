@@ -1,0 +1,47 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Security issues:** please use [private reporting](../security/advisories/new) instead.
+        Please remove anything private (hostnames, file contents) from logs before pasting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. dotsync add ~/.foo
+        2. edit ~/.foo on machine B
+        3. …
+  - type: textarea
+    id: status
+    attributes:
+      label: "`dotsync status -v` output"
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant lines from ~/.local/state/dotsync/sync.log
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: "`dotsync version`"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      placeholder: macOS 26.1 / Ubuntu 24.04 / …
+    validations:
+      required: true

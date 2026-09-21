@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: dotsync
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: dotsync
+    main: ./cmd/dotsync
+    binary: dotsync
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/pungoyal/dotsync/internal/dotsync.Version={{ .Version }}
+      - -X github.com/pungoyal/dotsync/internal/dotsync.Commit={{ .FullCommit }}
+      - -X github.com/pungoyal/dotsync/internal/dotsync.Date={{ .CommitDate }}
+    # Reproducible builds: timestamps come from the commit, not the build machine.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - docs/*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.sbom.json"
+
+# release-please owns the changelog and creates the GitHub release; GoReleaser only adds assets.
+changelog:
+  disable: true
+
+release:
+  mode: keep-existing
+  footer: |
+    ### Verify this release
+
+    ```sh
+    gh attestation verify dotsync_{{ .Version }}_<os>_<arch>.tar.gz --repo {{ .Env.GITHUB_REPOSITORY }}
+    ```
+
+    See [verifying releases](https://github.com/{{ .Env.GITHUB_REPOSITORY }}/blob/main/docs/verifying-releases.md).

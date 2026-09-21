@@ -1,0 +1,44 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nolintlint
+    - unconvert
+    - usestdlibvars
+  settings:
+    gosec:
+      excludes:
+        - G104 # unhandled errors: covered by errcheck and its exclusions
+        - G115 # int conversions: modes are validated to 0..07777 before conversion
+        - G703 # path "traversal": writing to user-chosen paths inside $HOME is the job
+        - G204 # subprocess with variable args: we run git/launchctl/systemctl by design
+        - G301 # directory permissions: user config dirs follow umask conventions
+        - G302 # file permissions on dotfiles mirror the user's own choices
+        - G304 # file inclusion via variable: reading user-chosen paths is the job
+        - G306 # WriteFile permissions: same as G302
+    gocritic:
+      disabled-checks:
+        - captLocal # L/R/B are the names used throughout the docs
+        - ifElseChain
+    errcheck:
+      exclude-functions:
+        - (*os.File).Close
+        - os.Remove
+        - os.RemoveAll
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters: [errcheck, gosec]
+
+formatters:
+  enable:
+    - gofmt
