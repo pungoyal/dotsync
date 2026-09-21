@@ -104,29 +104,29 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-func agentInstall(c *Ctx) (string, error) {
+// agentDef is the complete definition of the background agent for this machine: the exact
+// files (launchd plist, systemd units) or crontab line that `agent install` writes. doctor and
+// update compare it with what is installed to spot a definition written by an older dotsync.
+type agentDef struct {
+	kind     string            // "launchd", "systemd" or "cron"
+	files    map[string]string // path -> content
+	cronLine string
+	summary  string
+}
+
+func desiredAgent(c *Ctx) (agentDef, error) {
 	interval := c.Config.Interval
 	if interval <= 0 {
 		interval = defaultInterval
 	}
 	cmd := agentCommand(c)
-	if err := os.MkdirAll(c.Paths.StateDir, 0o700); err != nil {
-		return "", err
-	}
 	switch {
 	case osName() == "darwin":
-		plist := launchdPlistContent(c, cmd, interval)
-		if err := atomicWrite(launchdPlist(), []byte(plist), 0o644); err != nil {
-			return "", err
-		}
-		domain := fmt.Sprintf("gui/%d", os.Getuid())
-		runQuiet("launchctl", "bootout", domain+"/"+agentLabel)
-		if out, code := runQuiet("launchctl", "bootstrap", domain, launchdPlist()); code != 0 {
-			if _, code := runQuiet("launchctl", "load", "-w", launchdPlist()); code != 0 {
-				return "", fmt.Errorf("launchctl bootstrap failed: %s", lastLine(out))
-			}
-		}
-		return fmt.Sprintf("launchd agent %s, every %ds", agentLabel, interval), nil
+		return agentDef{
+			kind:    "launchd",
+			files:   map[string]string{launchdPlist(): launchdPlistContent(c, cmd, interval)},
+			summary: fmt.Sprintf("launchd agent %s, every %ds", agentLabel, interval),
+		}, nil
 	case haveSystemdUser():
 		var quoted []string
 		for _, a := range cmd {
@@ -144,20 +144,17 @@ func agentInstall(c *Ctx) (string, error) {
 			"# A fixed schedule: no random delay. The 1-minute accuracy window lets systemd batch\n"+
 			"# this wake-up with others (fewer CPU wake-ups) at a fixed per-machine offset.\n"+
 			"RandomizedDelaySec=0\nAccuracySec=1min\n\n[Install]\nWantedBy=timers.target\n", interval)
-		if err := atomicWrite(filepath.Join(systemdDir(), "dotsync.service"), []byte(service), 0o644); err != nil {
-			return "", err
-		}
-		if err := atomicWrite(filepath.Join(systemdDir(), "dotsync.timer"), []byte(timer), 0o644); err != nil {
-			return "", err
-		}
-		runQuiet("systemctl", "--user", "daemon-reload")
-		if out, code := runQuiet("systemctl", "--user", "enable", "--now", "dotsync.timer"); code != 0 {
-			return "", fmt.Errorf("systemctl --user enable failed: %s", lastLine(out))
-		}
-		return fmt.Sprintf("systemd user timer dotsync.timer, every %ds", interval), nil
+		return agentDef{
+			kind: "systemd",
+			files: map[string]string{
+				filepath.Join(systemdDir(), "dotsync.service"): service,
+				filepath.Join(systemdDir(), "dotsync.timer"):   timer,
+			},
+			summary: fmt.Sprintf("systemd user timer dotsync.timer, every %ds", interval),
+		}, nil
 	default:
 		if _, err := exec.LookPath("crontab"); err != nil {
-			return "", errors.New("no launchd, systemd --user or crontab found; run `dotsync sync -q` from your own scheduler")
+			return agentDef{}, errors.New("no launchd, systemd --user or crontab found; run `dotsync sync -q` from your own scheduler")
 		}
 		schedule, every := cronSchedule(interval)
 		var words []string
@@ -168,11 +165,75 @@ func agentInstall(c *Ctx) (string, error) {
 			words = append(words, shellQuote(a))
 		}
 		line := fmt.Sprintf("%s %s >>%s 2>&1 %s", schedule, strings.Join(words, " "), shellQuote(c.Paths.AgentLog), cronTag)
-		if err := setCronLine(strings.ReplaceAll(line, "%", `\%`)); err != nil {
+		return agentDef{kind: "cron", cronLine: strings.ReplaceAll(line, "%", `\%`), summary: "cron, " + every}, nil
+	}
+}
+
+func agentInstall(c *Ctx) (string, error) {
+	def, err := desiredAgent(c)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(c.Paths.StateDir, 0o700); err != nil {
+		return "", err
+	}
+	for path, content := range def.files {
+		if err := atomicWrite(path, []byte(content), 0o644); err != nil {
 			return "", err
 		}
-		return "cron, " + every, nil
 	}
+	switch def.kind {
+	case "launchd":
+		domain := fmt.Sprintf("gui/%d", os.Getuid())
+		runQuiet("launchctl", "bootout", domain+"/"+agentLabel)
+		if out, code := runQuiet("launchctl", "bootstrap", domain, launchdPlist()); code != 0 {
+			if _, code := runQuiet("launchctl", "load", "-w", launchdPlist()); code != 0 {
+				return "", fmt.Errorf("launchctl bootstrap failed: %s", lastLine(out))
+			}
+		}
+	case "systemd":
+		runQuiet("systemctl", "--user", "daemon-reload")
+		if out, code := runQuiet("systemctl", "--user", "enable", "--now", "dotsync.timer"); code != 0 {
+			return "", fmt.Errorf("systemctl --user enable failed: %s", lastLine(out))
+		}
+	case "cron":
+		if err := setCronLine(def.cronLine); err != nil {
+			return "", err
+		}
+	}
+	return def.summary, nil
+}
+
+// agentInstalled reports whether a background agent is installed here, and whether its
+// definition is exactly what this version of dotsync would install.
+func agentInstalled(c *Ctx) (installed, current bool) {
+	def, err := desiredAgent(c)
+	if err != nil {
+		return false, false
+	}
+	if def.kind == "cron" {
+		out, code := runQuiet("crontab", "-l")
+		if code != 0 || !strings.Contains(out, cronTag) {
+			return false, false
+		}
+		for _, l := range strings.Split(out, "\n") {
+			if l == def.cronLine {
+				return true, true
+			}
+		}
+		return true, false
+	}
+	current = true
+	for path, want := range def.files {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			return false, false
+		}
+		if string(got) != want {
+			current = false
+		}
+	}
+	return true, current
 }
 
 func launchdPlistContent(c *Ctx, cmd []string, interval int) string {

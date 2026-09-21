@@ -104,7 +104,7 @@ dotsync update           # install the latest release (checksum + provenance ver
 dotsync update --check   # just tell me whether there's a newer one
 ```
 
-`dotsync doctor` also tells you when an update is available. Releases before 0.3.0 don't have `update`: run the install script once more to get it.
+`dotsync doctor` also tells you when an update is available. Both `update` and the install script re-install the background agent with the new version, so there's nothing else to do. Releases before 0.3.0 don't have `update`: run the install script once more to get it.
 
 ## Stuck downloading?
 

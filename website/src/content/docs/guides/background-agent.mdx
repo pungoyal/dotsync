@@ -44,6 +44,14 @@ The agent is built to be invisible on a laptop battery and predictable in what i
   - git's own automatic gc and maintenance are turned off
 - Push retries after another machine pushes first happen immediately, with no random back-off.
 
+## Updates
+
+`dotsync update` and the install script both re-install the agent after replacing the binary, so its schedule, priority and environment always match the version you run. `dotsync doctor` warns if the agent's definition was written by an older version (`dotsync agent install` fixes it).
+
+## Why Login Items shows a generic icon on macOS
+
+System Settings → General → Login Items lists dotsync under *Background App Activity* with a generic "exec" icon. macOS picks the name and icon of a background item from its **code signature**. It can only show an app's icon for items signed with an Apple Developer ID, which ties the item to that app's Team ID. dotsync's macOS binaries aren't Developer ID-signed yet, so macOS shows the executable's name with its default icon. This is cosmetic: the agent works the same either way. Signing is tracked in [issue #11](https://github.com/pungoyal/dotsync/issues/11).
+
 ## Change the interval
 
 Set `interval` (in seconds) in `~/.config/dotsync/config.json`, then run `dotsync agent install`. With cron the interval is rounded to whole minutes.

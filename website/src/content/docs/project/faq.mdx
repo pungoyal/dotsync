@@ -7,6 +7,10 @@ description: Answers to common questions about dotsync.
 
 No. It supports macOS and Linux on amd64 and arm64. It runs fine under WSL, as Linux.
 
+### Why does macOS show a generic icon for dotsync in Login Items?
+
+macOS shows an app's icon there only for background items signed with an Apple Developer ID. dotsync isn't signed that way yet, so you see the default "exec" icon. It's purely cosmetic. See [the background agent](/dotsync/guides/background-agent/#why-login-items-shows-a-generic-icon-on-macos) for details.
+
 ### How quickly do changes propagate?
 
 Within the agent's interval, five minutes by default, on each machine. Run `dotsync sync` for an immediate sync.

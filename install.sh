@@ -109,6 +109,13 @@ install -m 0755 "$tmp/dotsync" "$BIN_DIR/dotsync" 2>/dev/null || {
 }
 say "installed $BIN_DIR/dotsync"
 
+# Upgrading an existing setup: re-install the background agent so its definition matches the
+# new version (a no-op for new installs, where `dotsync init` installs it).
+case "$("$BIN_DIR/dotsync" agent status 2>/dev/null)" in
+	"" | *"not installed"*) ;;
+	*) "$BIN_DIR/dotsync" agent install >/dev/null 2>&1 && say "background agent refreshed" ;;
+esac
+
 case ":$PATH:" in
 	*":$BIN_DIR:"*) ;;
 	*) say "note: $BIN_DIR is not on your PATH; add it to your shell configuration" ;;

@@ -59,7 +59,7 @@ Checks everything dotsync depends on:
 - the git version
 - the configuration and cache clone
 - that the remote is reachable **without prompts**, exactly as the background agent will reach it
-- the agent, and whether `dotsync` is on your `PATH`
+- the agent, whether its definition is current, and whether `dotsync` is on your `PATH`
 - how long ago the last sync ran
 - conflicts, blocked files and errors
 - backup usage
@@ -88,7 +88,7 @@ Exits `1` if any check fails (`✗`); warnings (`!`) don't change the exit statu
 dotsync update [--check] [--version vX.Y.Z] [--require-attestation]
 ```
 
-Replaces the running binary with the latest release, applying the same checks as the install script. It verifies the **SHA-256 checksum**, plus the **signed build provenance** when the GitHub CLI is available, before replacing anything. The binary is swapped atomically. If the background agent runs a different copy (`~/.local/bin/dotsync`), that copy is updated too, so the next scheduled sync already uses the new version.
+Replaces the running binary with the latest release, applying the same checks as the install script. It verifies the **SHA-256 checksum**, plus the **signed build provenance** when the GitHub CLI is available, before replacing anything. The binary is swapped atomically. If the background agent runs a different copy (`~/.local/bin/dotsync`), that copy is updated too. The agent's definition (schedule, priority, environment) is then re-installed with the new version, so the next scheduled sync already runs the new version with its current settings.
 
 | Flag | Description |
 |---|---|
