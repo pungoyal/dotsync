@@ -69,6 +69,7 @@ var commandGroups = []struct {
 		{name: "doctor", summary: "check the setup and explain how to fix problems", run: cmdDoctor},
 		{name: "update", summary: "install the latest release (verified)", run: cmdUpdate},
 		{name: "agent", args: "install|uninstall|status", summary: "manage the background agent", run: cmdAgent},
+		{name: "import", args: "stow <dir> [package...]", summary: "move from GNU Stow: replace its symlinks with real files and manage them", run: cmdImport},
 	}},
 	{"managing files (changes apply to every machine)", []command{
 		{name: "add", args: "<path>...", summary: "start managing files or directories", run: cmdAdd},
@@ -497,6 +498,14 @@ func addOp(c *Ctx, arg string, o addOptions) (*Op, error) {
 	return &Op{ID: newOpID(), Op: "add", Entry: normalized, Queued: nowISO()}, nil
 }
 
+// secretError is the refusal to manage a file that looks like a secret. It is a type so that
+// 'import' can tell it from other failures and show the short reason.
+type secretError struct{ reason string }
+
+func (e *secretError) Error() string {
+	return fmt.Sprintf("refusing to manage it: %s (use -allow-secrets if the remote is meant to hold it)", e.reason)
+}
+
 // checkNewSecrets refuses a file that looks like it holds a secret. For a directory it only
 // warns: those files are held back on every sync, while the rest of the directory syncs.
 func checkNewSecrets(c *Ctx, path, kind string, ignore []string) error {
@@ -507,7 +516,7 @@ func checkNewSecrets(c *Ctx, path, kind string, ignore []string) error {
 			return err
 		}
 		if reason := secretReason(path, o); reason != "" {
-			return fmt.Errorf("refusing to manage it: %s (use -allow-secrets if the remote is meant to hold it)", reason)
+			return &secretError{reason}
 		}
 		return nil
 	}
