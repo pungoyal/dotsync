@@ -31,19 +31,29 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      # With a GitHub App configured (vars.RELEASE_APP_CLIENT_ID, secrets.RELEASE_APP_PRIVATE_KEY),
+      # release-please acts as that app, so the release PR's CI runs like any other PR's. Without
+      # it, GITHUB_TOKEN is used and the next step starts the checks instead.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        if: vars.RELEASE_APP_CLIENT_ID != ''
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
-          # Optional: a fine-grained PAT (contents + pull requests: read/write) lets CI run on the
-          # release PR automatically; PRs opened with GITHUB_TOKEN need their checks approved.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-      # The release PR is opened by github-actions[bot], so GitHub holds its pull_request runs
-      # for maintainer approval ("first-time contributor" policy). workflow_dispatch isn't subject
-      # to that, and its checks attach to the PR's head commit. So whenever a release PR is open,
-      # run CI and CodeQL on it directly.
+      # A release PR opened with GITHUB_TOKEN is authored by github-actions[bot], so GitHub holds
+      # its pull_request runs for maintainer approval ("first-time contributor" policy).
+      # workflow_dispatch isn't subject to that, and its checks attach to the PR's head commit.
+      # So whenever a release PR is open, run CI and CodeQL on it directly.
       - name: Run checks on the open release PR
+        if: steps.app-token.outputs.token == ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: release-please--branches--main--components--dotsync
