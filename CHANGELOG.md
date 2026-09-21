@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/pungoyal/dotsync/compare/v0.5.0...v0.6.0) (2026-09-21)
+
+
+### Features
+
+* Homebrew formula and Ubuntu/Debian packages with a signed APT repository ([#30](https://github.com/pungoyal/dotsync/issues/30)) ([050b843](https://github.com/pungoyal/dotsync/commit/050b843f6289043e007f161bea138157af0f12c4))
+* redesign the docs site; notifications setting, same target per OS, clearer git errors ([#27](https://github.com/pungoyal/dotsync/issues/27)) ([f553aa0](https://github.com/pungoyal/dotsync/commit/f553aa05358986b347e2303d1de8fc65de7b9a2d))
+
+
+### Bug Fixes
+
+* **docs:** remove scrollbars and fix card alignment on the home page ([#28](https://github.com/pungoyal/dotsync/issues/28)) ([fd7b1d0](https://github.com/pungoyal/dotsync/commit/fd7b1d03f9a5ca7ef8a4e5388f15c5d845888a02))
+
+
+### Documentation
+
+* compare with mise's dotfiles feature; don't manage a file with both ([#29](https://github.com/pungoyal/dotsync/issues/29)) ([7d19972](https://github.com/pungoyal/dotsync/commit/7d199725e72600766fa18f4ca75f89b7739505e7))
+* track macOS signing only in its issue ([#24](https://github.com/pungoyal/dotsync/issues/24)) ([ed63c37](https://github.com/pungoyal/dotsync/commit/ed63c378a297c4fef24eed9b3cfa2a26d0ce6e03))
+
 ## [0.5.0](https://github.com/pungoyal/dotsync/compare/v0.4.1...v0.5.0) (2026-09-21)
 
 
