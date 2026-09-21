@@ -43,7 +43,9 @@ var gitFailures = []struct {
 		}},
 	{regexp.MustCompile(`(?i)repository not found|does not appear to be a git repository|not found`),
 		"the repository doesn't exist at that URL, or this account can't access it",
-		func(gitRemote) string { return "check the remote in ~/.config/dotsync/config.json and your access to it" }},
+		func(gitRemote) string {
+			return "check the remote in ~/.config/dotsync/config.json and your access to it"
+		}},
 }
 
 // missingProgram matches git (or a helper it runs) failing to find a program.
