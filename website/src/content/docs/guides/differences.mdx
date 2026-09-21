@@ -11,6 +11,7 @@ dotsync makes files **identical** everywhere they're managed. It deliberately ha
 
 ```sh
 dotsync add ~/.config/karabiner/karabiner.json --os darwin -d "Keyboard remapping"
+dotsync set ~/.config/karabiner/karabiner.json --os darwin   # for an entry that already exists
 ```
 
 Machines running another OS skip the entry and show it as *skipped* in `status`.
@@ -28,18 +29,15 @@ dotsync add ~/.config/alacritty/alacritty.toml --source alacritty/linux.toml --o
 
 ## Skip an entry on one machine
 
-Add its `source` to `exclude` in that machine's `~/.config/dotsync/config.json`:
+On the machine that shouldn't have it:
 
-```json title="~/.config/dotsync/config.json" ins={5}
-{
-  "remote": "git@github.com:you/dotfiles.git",
-  "branch": "main",
-  "interval": 300,
-  "exclude": ["karabiner/karabiner.json", "nvim"]
-}
+```sh
+dotsync exclude ~/.config/karabiner/karabiner.json
+dotsync exclude            # list what's excluded here
+dotsync include ~/.config/karabiner/karabiner.json   # undo
 ```
 
-The machine stops managing those entries. Its local files stay as they are, and other machines are unaffected.
+The machine stops managing the entry. Its local file stays as it is, and other machines are unaffected. Exclusions are stored in this machine's [configuration](/dotsync/reference/configuration/), never in the shared manifest.
 
 ## Shared file plus local overrides
 

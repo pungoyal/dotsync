@@ -322,8 +322,13 @@ type Op struct {
 	Op     string         `json:"op"` // add, remove, update
 	Entry  map[string]any `json:"entry,omitempty"`
 	Source string         `json:"source,omitempty"`
-	Fields map[string]any `json:"fields,omitempty"`
-	Queued string         `json:"queued"`
+	Fields map[string]any `json:"fields,omitempty"` // update: fields to set
+	Unset  []string       `json:"unset,omitempty"`  // update: fields to delete
+	// update: ignore patterns to add/remove. Expressed as changes rather than a whole list so
+	// that edits made concurrently on different machines combine instead of overwriting.
+	AddIgnore    []string `json:"add_ignore,omitempty"`
+	RemoveIgnore []string `json:"remove_ignore,omitempty"`
+	Queued       string   `json:"queued"`
 }
 
 func (o *Op) subject() string {
@@ -331,6 +336,55 @@ func (o *Op) subject() string {
 		return str(o.Entry["source"])
 	}
 	return o.Source
+}
+
+// applyUpdate returns a copy of raw with an update op's changes applied.
+func applyUpdate(raw map[string]any, op *Op) map[string]any {
+	out := map[string]any{}
+	for k, v := range raw {
+		out[k] = v
+	}
+	for k, v := range op.Fields {
+		out[k] = v
+	}
+	for _, k := range op.Unset {
+		delete(out, k)
+	}
+	if len(op.AddIgnore) > 0 || len(op.RemoveIgnore) > 0 {
+		var list []any
+		for _, p := range stringsOf(out["ignore"]) {
+			if !containsStr(op.RemoveIgnore, p) {
+				list = append(list, p)
+			}
+		}
+		for _, p := range op.AddIgnore {
+			if !containsStr(stringsOf(list), p) {
+				list = append(list, p)
+			}
+		}
+		if len(list) == 0 {
+			delete(out, "ignore")
+		} else {
+			out["ignore"] = list
+		}
+	}
+	return out
+}
+
+// stringsOf converts a JSON list ([]any or []string) to []string, skipping non-strings.
+func stringsOf(v any) []string {
+	var out []string
+	switch l := v.(type) {
+	case []string:
+		out = append(out, l...)
+	case []any:
+		for _, x := range l {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }
 
 // transientError is an I/O failure while replaying an op; the op is kept and retried.
@@ -388,12 +442,20 @@ func applyOp(c *Ctx, m *Manifest, op *Op) error {
 		m.Entries = kept
 	case "update":
 		for _, raw := range m.Entries {
-			if rawSource(raw) == op.Source {
-				for k, v := range op.Fields {
-					raw[k] = v
-				}
-				return nil
+			if rawSource(raw) != op.Source {
+				continue
 			}
+			updated := applyUpdate(raw, op)
+			if _, err := parseEntry(updated); err != nil {
+				return err
+			}
+			for k := range raw {
+				delete(raw, k)
+			}
+			for k, v := range updated {
+				raw[k] = v
+			}
+			return nil
 		}
 		return fmt.Errorf("no managed entry with source '%s'", op.Source)
 	default:

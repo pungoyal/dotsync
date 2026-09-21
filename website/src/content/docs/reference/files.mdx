@@ -10,7 +10,7 @@ Everything dotsync keeps on a machine lives under the standard XDG base director
 | `~/.config/dotsync/config.json` | [machine configuration](/dotsync/reference/configuration/) | only if you `init` again |
 | `~/.local/share/dotsync/repo/` | cache clone of the shared repository. Reset on every sync, never edit it | yes; `init` recreates it |
 | `~/.local/state/dotsync/state.json` | the base of every managed file, queued changes, conflicts, last sync result | yes, but see below |
-| `~/.local/state/dotsync/backups/<run>/` | copies of local files dotsync replaced or deleted | yes; old runs can go any time |
+| `~/.local/state/dotsync/backups/<run>/` | copies of local files dotsync replaced or deleted. Pruned after [`backup_retention_days`](/dotsync/reference/configuration/), keeping the newest copy of each file | yes; old runs can go any time |
 | `~/.local/state/dotsync/conflicts/` | a copy of the remote side of each current conflict, for `diff` | yes |
 | `~/.local/state/dotsync/sync.log` | log of changes, conflicts and errors (rotated to `sync.log.1` at 1 MiB) | yes |
 | `~/.local/state/dotsync/agent.log` | output of the scheduled job | yes |

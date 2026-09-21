@@ -11,14 +11,17 @@ dotsync <command> [flags] [arguments]
 
 - Flags can come before or after arguments. `-flag` and `--flag` both work, and `--` ends flag parsing.
 - Every command accepts `-h` for its own help.
-- `add`, `remove`, `describe` and `resolve` run a sync straight away, so you see the result immediately.
+- `add`, `remove`, `set`, `describe`, `exclude`, `include` and `resolve` run a sync straight away, so you see the result immediately.
 
 | Command | Alias | Purpose |
 |---|---|---|
 | [`init`](#init) | | set up this machine |
+| [`doctor`](#doctor) | | check the setup and explain how to fix problems |
 | [`add`](#add) | | start managing files or directories, on every machine |
 | [`remove`](#remove) | `rm` | stop managing entries, on every machine |
+| [`set`](#set) | | change an entry's ignore patterns, OS, permissions, write strategy or description |
 | [`describe`](#describe) | | change an entry's description |
+| [`exclude`](#exclude-and-include) / [`include`](#exclude-and-include) | | stop / resume managing an entry on this machine only |
 | [`sync`](#sync) | | synchronize now |
 | [`status`](#status) | `st` | managed files and their state on this machine |
 | [`list`](#list) | `ls` | the shared manifest |
@@ -43,6 +46,40 @@ Sets up this machine. It clones the repository, creates the manifest if the repo
 | `--interval <seconds>` | background sync interval (default `300`) |
 | `--no-agent` | don't install the background agent |
 | `--no-install` | don't copy the binary to `~/.local/bin` |
+
+## doctor
+
+```text
+dotsync doctor
+```
+
+Checks everything dotsync depends on:
+
+- the git version
+- the configuration and cache clone
+- that the remote is reachable **without prompts**, exactly as the background agent will reach it
+- the agent, and whether `dotsync` is on your `PATH`
+- how long ago the last sync ran
+- conflicts, blocked files and errors
+- backup usage
+
+Each problem comes with a `→` line saying how to fix it.
+
+```console frame="terminal"
+$ dotsync doctor
+dotsync doctor
+  ✓ dotsync 0.2.0 (…) go1.27.1 darwin/arm64
+  ✓ git version 2.54.0
+  ✓ configuration: ~/.config/dotsync/config.json
+  ✗ remote rejects authentication
+      git@github.com: Permission denied (publickey).
+      → make `git ls-remote git@github.com:you/dotfiles.git` work without a prompt: …
+  ✓ background agent: launchd agent loaded
+  ✓ 12 managed entries, 148 files
+  · backups: 6 file(s), 41.2 KiB in ~/.local/state/dotsync/backups (older than 90 days are pruned)
+```
+
+Exits `1` if any check fails (`✗`); warnings (`!`) don't change the exit status.
 
 ## add
 
@@ -69,13 +106,47 @@ dotsync remove [--no-sync] <path|source>...
 
 Stops managing entries on **every** machine. Local copies stay in place everywhere as ordinary unmanaged files. The content remains in the repository history.
 
+## set
+
+```text
+dotsync set <path|source> [changes]
+```
+
+Changes an entry in the shared manifest, for every machine.
+
+| Flag | Change |
+|---|---|
+| `-d`, `--description <text>` | set the description |
+| `--ignore <glob>` | add an ignore pattern (directories). Repeatable |
+| `--unignore <glob>` | remove an ignore pattern. Repeatable |
+| `--clear-ignore` | remove every ignore pattern |
+| `--os darwin\|linux` | only manage the entry on these operating systems (replaces the current list). Repeatable |
+| `--any-os` | remove the OS restriction |
+| `--mode <octal>` | force permissions on every machine, e.g. `0600` |
+| `--no-mode` | stop forcing permissions |
+| `--write atomic\|inplace` | how local files are replaced |
+| `--allow-secrets`, `--allow-secrets=false` | turn the [secret filters](/dotsync/reference/secret-rules/) off or back on for this entry |
+| `--no-sync` | only queue the change |
+
+The result is validated before anything is queued, so an invalid mode or OS is refused immediately. Ignore changes are recorded as *additions and removals*, so edits made on two machines at once combine rather than overwrite each other. To change an entry's `source` or `target`, `remove` it and `add` it again.
+
 ## describe
 
 ```text
 dotsync describe <path|source> <description>
 ```
 
-Changes an entry's description in the manifest.
+Shortcut for `dotsync set <path|source> --description <description>`.
+
+## exclude and include
+
+```text
+dotsync exclude [--no-sync] <path|source>...
+dotsync include [--no-sync] <path|source>...
+dotsync exclude            # list what's excluded on this machine
+```
+
+`exclude` stops managing entries **on this machine only**. The entries stay in the shared manifest, and the local files are left exactly as they are. `include` manages an excluded entry again. On that first sync, a local file that differs from the shared version is handled as on a new machine: backed up and replaced, or a conflict with `on_existing: "conflict"`. Both commands edit `exclude` in the [machine configuration](/dotsync/reference/configuration/).
 
 ## sync
 

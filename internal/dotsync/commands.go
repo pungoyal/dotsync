@@ -55,12 +55,18 @@ usage: dotsync <command> [options]
 
 setup
   init <git-url>          set up this machine: clone, first sync, install the background agent
+  doctor                  check the setup and explain how to fix problems
   agent install|uninstall|status
 
 managing files (changes apply to every machine)
   add <path>...           start managing files or directories
   remove <path|source>... stop managing (local copies are kept on every machine)
+  set <path|source> ...   change an entry: --ignore, --os, --mode, --write, -d, …
   describe <path|source> <text>
+
+this machine only
+  exclude <path|source>   stop managing an entry here (files are left as they are)
+  include <path|source>   manage an excluded entry here again
 
 everyday
   status                  managed files and their state on this machine
@@ -112,6 +118,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	commands := map[string]func([]string, io.Writer, io.Writer) (int, error){
 		"init": cmdInit, "add": cmdAdd, "remove": cmdRemove, "rm": cmdRemove, "describe": cmdDescribe,
+		"set": cmdSet, "exclude": cmdExclude, "include": cmdInclude, "doctor": cmdDoctor,
 		"sync": cmdSync, "status": cmdStatus, "st": cmdStatus, "list": cmdList, "ls": cmdList,
 		"diff": cmdDiff, "resolve": cmdResolve, "log": cmdLog, "agent": cmdAgent,
 	}
@@ -498,26 +505,6 @@ func cmdRemove(args []string, stdout, stderr io.Writer) (int, error) {
 		src := rawSource(raw)
 		return &Op{ID: newOpID(), Op: "remove", Source: src, Queued: nowISO()},
 			fmt.Sprintf("no longer managing %s ('%s'); local copies are left in place on every machine", str(raw["target"]), src)
-	})
-}
-
-func cmdDescribe(args []string, stdout, stderr io.Writer) (int, error) {
-	fs := newFlags("describe", "<path|source> <description>", stderr)
-	pos, err := parseArgs(fs, args)
-	if err != nil {
-		return 2, err
-	}
-	if len(pos) != 2 {
-		fs.Usage()
-		return 2, errors.New("expected a path or source and a description")
-	}
-	c, err := newCtx(true, false, stdout, stderr)
-	if err != nil {
-		return 1, err
-	}
-	return queueOps(c, pos[:1], false, func(raw map[string]any) (*Op, string) {
-		return &Op{ID: newOpID(), Op: "update", Source: rawSource(raw), Fields: map[string]any{"description": pos[1]}, Queued: nowISO()},
-			"description updated"
 	})
 }
 

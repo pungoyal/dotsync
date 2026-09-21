@@ -5,7 +5,7 @@ description: Fix common problems. Status shows offline, BLOCKED or ERROR; the ag
 
 import { Aside } from '@astrojs/starlight/components';
 
-Start with `dotsync status -v`. It shows the last sync result, the agent state, and every file that needs attention, with the reason.
+Start with **`dotsync doctor`**. It checks git, the remote (exactly as the background agent reaches it), the agent, the last sync and your managed files, and prints a `→` fix for each problem. Then `dotsync status -v` shows every file that needs attention, with the reason.
 
 ## `last sync: … (offline: …)`
 
@@ -29,10 +29,10 @@ The file changed on this machine and on another one. See [Resolve conflicts](/do
 
 | Message | Meaning and fix |
 |---|---|
-| `… uses $VAR, which is not set on this machine` | the entry's target uses an environment variable that isn't set here. Set it, or [exclude the entry](/dotsync/guides/differences/#skip-an-entry-on-one-machine) on this machine |
+| `… uses $VAR, which is not set on this machine` | the entry's target uses an environment variable that isn't set here. Set it, or `dotsync exclude` the entry on this machine |
 | `… is not a plain directory (symlink or file); not syncing below it` | a directory inside a managed tree was replaced by a symlink or a file. dotsync refuses to follow it. Turn it back into a real directory, or `ignore` it |
 | `… is a dir, but the manifest says it is a file` / `… exists but is not a directory` | the local path changed type. Move it aside and run `dotsync sync` |
-| `… is larger than 10 MiB` | add the file to the entry's `ignore` list |
+| `… is larger than 10 MiB` | `dotsync set <entry> --ignore <file>` |
 | `manifest.json … is not valid JSON` | someone edited the manifest by hand. Fix it in any clone and push; nothing is changed until then |
 
 ## Nothing syncs automatically
@@ -61,5 +61,5 @@ dotsync init --keep-existing <url>
 With `--keep-existing`, any file that differs from the shared version becomes a conflict for you to review, instead of being replaced.
 
 <Aside>
-Still stuck? [Open an issue](https://github.com/pungoyal/dotsync/issues/new/choose) with the output of `dotsync version` and `dotsync status -v`, removing anything private first.
+Still stuck? [Open an issue](https://github.com/pungoyal/dotsync/issues/new/choose) with the output of `dotsync doctor` and `dotsync status -v`, removing anything private first.
 </Aside>

@@ -271,7 +271,15 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 			}
 			clearOps(st, p.AppliedOps)
 		}
-		return finish(c, st, p, outcome, commit), nil
+		res := finish(c, st, p, outcome, commit)
+		if days := c.Config.backupRetention(); days > 0 {
+			if n, err := pruneBackups(c.Paths.Backups, time.Duration(days)*24*time.Hour, time.Now()); err != nil {
+				c.log("error        pruning backups: " + err.Error())
+			} else if n > 0 {
+				c.log(fmt.Sprintf("pruned %d backup file(s) older than %d days", n, days))
+			}
+		}
+		return res, nil
 	}
 	return nil, fmt.Errorf("gave up after %d attempts: the remote kept changing", pushAttempts)
 }
