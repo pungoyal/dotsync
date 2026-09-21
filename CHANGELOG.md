@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0](https://github.com/pungoyal/dotsync/compare/v0.1.1...v0.2.0) (2026-09-21)
+
+
+### Features
+
+* add dotsync doctor to check the setup and explain fixes ([#3](https://github.com/pungoyal/dotsync/issues/3)) ([0daf6df](https://github.com/pungoyal/dotsync/commit/0daf6dfa65b5ae1fac4c8f9f8b3efda1ef7a00a4))
+* add dotsync exclude and include to opt a single machine out of an entry ([0daf6df](https://github.com/pungoyal/dotsync/commit/0daf6dfa65b5ae1fac4c8f9f8b3efda1ef7a00a4))
+* add dotsync set to change an entry's ignore patterns, OS, mode, write strategy or description without editing JSON ([0daf6df](https://github.com/pungoyal/dotsync/commit/0daf6dfa65b5ae1fac4c8f9f8b3efda1ef7a00a4))
+* prune backups older than backup_retention_days (default 90), always keeping the newest copy of each file ([0daf6df](https://github.com/pungoyal/dotsync/commit/0daf6dfa65b5ae1fac4c8f9f8b3efda1ef7a00a4))
+
 ## [0.1.1](https://github.com/pungoyal/dotsync/compare/v0.1.0...v0.1.1) (2026-09-21)
 
 
