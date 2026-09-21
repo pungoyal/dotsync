@@ -16,7 +16,6 @@
   <a href="https://github.com/pungoyal/dotsync/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pungoyal/dotsync/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/pungoyal/dotsync/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/pungoyal/dotsync?sort=semver"></a>
   <a href="https://pkg.go.dev/github.com/pungoyal/dotsync"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/pungoyal/dotsync.svg"></a>
-  <a href="https://goreportcard.com/report/github.com/pungoyal/dotsync"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/pungoyal/dotsync"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/pungoyal/dotsync"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/pungoyal/dotsync/badge"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>

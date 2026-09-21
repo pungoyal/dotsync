@@ -68,6 +68,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ env.TAG }}
       - name: Attest build provenance
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: ./dist/checksums.txt
+      # Also publish the signed provenance next to the binaries, for offline verification
+      # (`gh attestation verify --bundle`) and for tools that look for it there.
+      - name: Attach provenance bundle to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          out="dotsync_${TAG#v}.intoto.jsonl"
+          cp "$BUNDLE" "$out"
+          gh release upload "$TAG" "$out" --clobber --repo "$GITHUB_REPOSITORY"

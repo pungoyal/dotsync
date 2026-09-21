@@ -749,3 +749,20 @@ func TestSchedulerHelpers(t *testing.T) {
 
 // Built at runtime so secret scanners don't flag the test fixture itself.
 var fakeAWSKey = "AKIA" + strings.Repeat("Z", 16)
+
+func TestGlobNonASCII(t *testing.T) {
+	for _, c := range []struct {
+		pattern, s string
+		want       bool
+	}{
+		{"café*", "café-notes.md", true},
+		{"*.über", "x.über", true},
+		{"日本?", "日本語", true},
+		{"\xff", "\xff", true}, // invalid UTF-8: literal match, no panic
+		{"[\xc8]", "x", false},
+	} {
+		if got := globMatch(c.pattern, c.s); got != c.want {
+			t.Errorf("globMatch(%q, %q) = %v, want %v", c.pattern, c.s, got, c.want)
+		}
+	}
+}

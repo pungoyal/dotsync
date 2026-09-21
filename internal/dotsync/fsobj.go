@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"unicode/utf8"
 )
 
 const maxFileSize = 10 << 20
@@ -289,8 +290,13 @@ func copyToBackup(src, dest string) error {
 }
 
 // globMatch is fnmatch-style: '*' also matches '/', '?' one character, [...] a class.
+// A pattern that can't be compiled (e.g. invalid UTF-8 from a hand-edited manifest) only
+// matches itself literally; it never panics.
 func globMatch(pattern, s string) bool {
-	return globRegexp(pattern).MatchString(s)
+	if re := globRegexp(pattern); re != nil {
+		return re.MatchString(s)
+	}
+	return pattern == s
 }
 
 var (
@@ -303,6 +309,10 @@ func globRegexp(pattern string) *regexp.Regexp {
 	defer globMu.Unlock()
 	if re, ok := globCache[pattern]; ok {
 		return re
+	}
+	if !utf8.ValidString(pattern) {
+		globCache[pattern] = nil // matched literally by globMatch
+		return nil
 	}
 	var b strings.Builder
 	b.WriteString("^")
@@ -326,13 +336,15 @@ func globRegexp(pattern string) *regexp.Regexp {
 			b.WriteString("[" + strings.ReplaceAll(class, `\`, `\\`) + "]")
 			i += j + 1
 		default:
-			b.WriteString(regexp.QuoteMeta(string(c)))
+			_, size := utf8.DecodeRuneInString(pattern[i:])
+			b.WriteString(regexp.QuoteMeta(pattern[i : i+size]))
+			i += size - 1
 		}
 	}
 	b.WriteString("$")
 	re, err := regexp.Compile(b.String())
 	if err != nil {
-		re = regexp.MustCompile("^" + regexp.QuoteMeta(pattern) + "$")
+		re = nil
 	}
 	globCache[pattern] = re
 	return re

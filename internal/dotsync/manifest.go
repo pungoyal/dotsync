@@ -165,6 +165,9 @@ func normalizeSource(s string) (string, error) {
 		if p == ".." {
 			return "", fmt.Errorf("source '%s' may not contain '..'", s)
 		}
+		if strings.TrimSpace(p) != p {
+			return "", fmt.Errorf("source '%s' has a path component with leading or trailing spaces", s)
+		}
 		if strings.EqualFold(p, ".git") {
 			return "", fmt.Errorf("source '%s' may not contain a .git component", s)
 		}

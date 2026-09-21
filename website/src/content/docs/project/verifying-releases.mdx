@@ -12,7 +12,7 @@ Every release is built from a tagged commit by GitHub Actions. Nobody builds or 
 | `dotsync_<version>_<os>_<arch>.tar.gz` | the binary, plus `LICENSE`, `README.md` and `CHANGELOG.md` |
 | `checksums.txt` | SHA-256 of every archive |
 | `*.sbom.json` | a software bill of materials (SPDX) for each archive |
-| build provenance attestation | a signed [SLSA provenance](https://slsa.dev/provenance) statement tying each archive to the workflow run, commit and repository that built it |
+| build provenance attestation | a signed [SLSA provenance](https://slsa.dev/provenance) statement tying each archive to the workflow run, commit and repository that built it. It's stored with GitHub and also attached to the release as `dotsync_<version>.intoto.jsonl` |
 
 Attestations are signed through Sigstore with the release workflow's own short-lived identity. There's no long-lived signing key that could leak.
 
@@ -40,6 +40,15 @@ gh attestation verify dotsync_0.1.0_darwin_arm64.tar.gz --repo pungoyal/dotsync 
 <Aside type="tip">
 The install script runs this check automatically when `gh` is available. Set `DOTSYNC_REQUIRE_ATTESTATION=1` to make it mandatory.
 </Aside>
+
+### Offline, or without trusting the GitHub API
+
+The same signed bundle is attached to every release, so you can verify against the file itself:
+
+```sh
+gh attestation verify dotsync_0.1.0_darwin_arm64.tar.gz \
+  --bundle dotsync_0.1.0.intoto.jsonl --repo pungoyal/dotsync
+```
 
 ## Verify the checksum
 
