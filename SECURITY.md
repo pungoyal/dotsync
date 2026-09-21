@@ -6,6 +6,16 @@ dotsync handles personal configuration files and runs unattended, so we take sec
 
 Security fixes are made for the latest release. Please upgrade before reporting.
 
+## Signing keys
+
+Release files are signed through Sigstore with the release workflow's own identity; there's no long-lived key (see [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/)). The only long-lived key signs the APT repository's index:
+
+| Key | Fingerprint |
+|---|---|
+| dotsync APT repository <pungoyal@gmail.com> (RSA 4096) | `FD8B DCCB 9FAE 77A7 03F3  7154 3EC2 40F3 0AB4 EE33` |
+
+It's served at https://pungoyal.github.io/dotsync/apt/dotsync.asc. If it ever changes, this file and a release note will say so.
+
 ## Reporting a vulnerability
 
 **Please do not open a public issue.** Report privately through GitHub's [private vulnerability reporting](https://github.com/pungoyal/dotsync/security/advisories/new).

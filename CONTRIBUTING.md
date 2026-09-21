@@ -155,7 +155,7 @@ Both are optional: without them, releases still ship the `.deb` files and archiv
   export GNUPGHOME=$(mktemp -d)
   gpg --batch --passphrase '' --quick-gen-key "dotsync APT repository <pungoyal@gmail.com>" rsa4096 sign never
   gpg --armor --export-secret-keys | gh secret set APT_SIGNING_KEY
-  gpg --fingerprint   # publish this in SECURITY.md
+  gpg --fingerprint   # publish this in SECURITY.md and the installation page
   ```
 
   The key deliberately doesn't expire: users fetch it once, when they add the repository, so an expired key would break `apt update` on every machine until each user fetched it again. If it's ever compromised, revoke it with the revocation certificate gpg saved in `$GNUPGHOME/openpgp-revocs.d/`, and publish a new one.

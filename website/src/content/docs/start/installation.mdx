@@ -65,6 +65,8 @@ curl -fsSL https://pungoyal.github.io/dotsync/apt/dotsync.sources | sudo tee /et
 sudo apt update && sudo apt install dotsync
 ```
 
+To check the key before trusting it, run `gpg --show-keys /etc/apt/keyrings/dotsync.asc`. It should print the fingerprint `FD8B DCCB 9FAE 77A7 03F3 7154 3EC2 40F3 0AB4 EE33`, which is also listed in the project's [security policy](https://github.com/pungoyal/dotsync/blob/main/SECURITY.md#signing-keys).
+
 The repository serves the latest release for amd64 and arm64, and apt trusts its key for this repository only (`Signed-By`). The package installs `/usr/bin/dotsync` and the man page, and depends on `git`. **apt keeps dotsync up to date** along with your other packages. It's tested on Ubuntu 22.04 and 24.04, and Debian 12 and 13.
 
 To install without adding the repository, download `dotsync_<version>_<arch>.deb` from the [latest release](https://github.com/pungoyal/dotsync/releases/latest), [verify it](/dotsync/project/verifying-releases/), and run `sudo apt install ./dotsync_*.deb`. To update, install the next release's `.deb` the same way.
