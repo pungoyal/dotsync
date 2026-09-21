@@ -1,0 +1,50 @@
+---
+title: FAQ
+description: Answers to common questions about dotsync.
+---
+
+### Does dotsync work on Windows?
+
+No. It supports macOS and Linux on amd64 and arm64. It runs fine under WSL, as Linux.
+
+### How quickly do changes propagate?
+
+Within the agent's interval, five minutes by default, on each machine. Run `dotsync sync` for an immediate sync.
+
+### Can I use a repository I already have?
+
+Use a **new, empty** repository. dotsync's layout (`manifest.json` + `files/`) differs from a typical dotfiles repository. See [Migrate from another tool](/dotsync/guides/migrate/).
+
+### Does it need GitHub?
+
+No. Any git remote works: GitLab, Gitea, Bitbucket, a bare repository over SSH, even a path on a mounted drive.
+
+### What happens if two machines sync at the same moment?
+
+One push wins; the other is rejected and redone on top of it. If both changed the same file, that file becomes a [conflict](/dotsync/guides/resolve-conflicts/). Nothing is lost.
+
+### Can one file differ between machines?
+
+Not through templating, deliberately. Use per-OS entries, per-machine exclusions or local include files. See [Per-OS and per-machine differences](/dotsync/guides/differences/).
+
+### Is my data encrypted?
+
+dotsync relies on your git host's access control and transport encryption, and it keeps secrets out of the repository instead of encrypting them. See the [security model](/dotsync/concepts/security-model/).
+
+### How big can managed directories be?
+
+Files over 10 MiB are refused. Directories with thousands of small files work, but dotfiles are rarely that big. Keep caches and plugin checkouts out with `ignore`.
+
+### Can several people share one repository?
+
+It's designed for one person's machines: everyone syncing with a repository gets the same files.
+
+### How do I move to a different remote?
+
+Push the repository to its new home, then on each machine:
+
+```sh
+git -C ~/.local/share/dotsync/repo remote set-url origin <new-url>
+```
+
+and update `remote` in `~/.config/dotsync/config.json`.

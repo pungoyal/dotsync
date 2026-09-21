@@ -1,0 +1,63 @@
+---
+title: Per-OS and per-machine differences
+description: Keep machine-specific configuration out of the shared manifest, with OS filters, per-machine exclusions, portable targets and local include files.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+dotsync makes files **identical** everywhere they're managed. It deliberately has no templating. Here are the tools for when machines need to differ, from simplest to most flexible.
+
+## Only on macOS, or only on Linux
+
+```sh
+dotsync add ~/.config/karabiner/karabiner.json --os darwin -d "Keyboard remapping"
+```
+
+Machines running another OS skip the entry and show it as *skipped* in `status`.
+
+## A different file per OS
+
+Use two entries with the same target but different sources, each limited to one OS:
+
+```sh
+# on the Mac
+dotsync add ~/.config/alacritty/alacritty.toml --source alacritty/macos.toml --os darwin
+# on a Linux machine
+dotsync add ~/.config/alacritty/alacritty.toml --source alacritty/linux.toml --os linux
+```
+
+## Skip an entry on one machine
+
+Add its `source` to `exclude` in that machine's `~/.config/dotsync/config.json`:
+
+```json title="~/.config/dotsync/config.json" ins={5}
+{
+  "remote": "git@github.com:you/dotfiles.git",
+  "branch": "main",
+  "interval": 300,
+  "exclude": ["karabiner/karabiner.json", "nvim"]
+}
+```
+
+The machine stops managing those entries. Its local files stay as they are, and other machines are unaffected.
+
+## Shared file plus local overrides
+
+Many tools can include a second file. Sync the main file and keep a small, unmanaged local file next to it:
+
+| Tool | In the synced file | Local file |
+|---|---|---|
+| git | `[include] path = ~/.gitconfig.local` | `~/.gitconfig.local` |
+| ssh | `Include ~/.ssh/config.local` (at the top) | `~/.ssh/config.local` |
+| zsh / bash | `[ -f ~/.zshrc.local ] && . ~/.zshrc.local` | `~/.zshrc.local` |
+| fish | `test -f ~/.config/fish/local.fish; and source ~/.config/fish/local.fish` | `~/.config/fish/local.fish` |
+| tmux | `if-shell "test -f ~/.tmux.local.conf" "source ~/.tmux.local.conf"` | `~/.tmux.local.conf` |
+| Neovim | `pcall(require, 'local')` | `~/.config/nvim/lua/local.lua` (add to `ignore`) |
+
+## Machines with different paths
+
+Write targets in a portable form: `~/…`, or `$XDG_CONFIG_HOME/…` if some machines relocate their config directory. Each machine expands them itself. Absolute paths aren't allowed in the manifest, because they differ between machines. See [targets](/dotsync/reference/manifest/#targets).
+
+<Aside type="tip">
+Need real templating, where one file renders differently per host? [chezmoi](https://www.chezmoi.io/) is built for that. See the [comparison](/dotsync/concepts/comparison/).
+</Aside>

@@ -1,0 +1,135 @@
+---
+/**
+ * Interactive version of dotsync's three-way decision table (see internal/dotsync/plan.go, decide()).
+ * Without JavaScript it shows the default example (an edit on this machine only).
+ */
+const states = [
+	{ id: 'same', label: 'Unchanged' },
+	{ id: 'edit', label: 'Edited' },
+	{ id: 'del', label: 'Deleted' },
+];
+---
+
+<div class="explorer not-content" data-explorer>
+	<div class="controls">
+		<fieldset>
+			<legend>On <strong>this machine</strong>, since the last sync the file was…</legend>
+			{states.map((s, i) => (
+				<label>
+					<input type="radio" name="local" value={s.id} checked={i === 1} />
+					<span>{s.label}</span>
+				</label>
+			))}
+		</fieldset>
+		<fieldset>
+			<legend>On <strong>another machine</strong> (already pushed), it was…</legend>
+			{states.map((s, i) => (
+				<label>
+					<input type="radio" name="remote" value={s.id} checked={i === 0} />
+					<span>{s.label}</span>
+				</label>
+			))}
+		</fieldset>
+	</div>
+	<div class="result" aria-live="polite" data-kind="out">
+		<p class="verdict"><span class="dot" aria-hidden="true"></span><span data-verdict>Sent to every machine</span></p>
+		<p class="detail" data-detail>Only this machine changed it, so this version is pushed and every other machine installs it on its next sync.</p>
+		<p class="fine" data-fine></p>
+	</div>
+</div>
+
+<script>
+	type Outcome = { kind: 'ok' | 'in' | 'out' | 'conflict'; verdict: string; detail: string; fine?: string };
+	const table: Record<string, Outcome> = {
+		'same/same': { kind: 'ok', verdict: 'Nothing to do', detail: 'Both sides still have the version they last agreed on.' },
+		'same/edit': {
+			kind: 'in', verdict: 'Updated here',
+			detail: 'Only the other machine changed it. This machine backs up its copy, then installs the new version.',
+			fine: 'Backups live in ~/.local/state/dotsync/backups/.',
+		},
+		'same/del': {
+			kind: 'in', verdict: 'Removed here (after a backup)',
+			detail: 'A file deleted inside a managed directory is deleted on every machine. Each machine backs it up first.',
+			fine: 'For a single-file entry the file is restored instead; to stop managing it, use dotsync remove.',
+		},
+		'edit/same': {
+			kind: 'out', verdict: 'Sent to every machine',
+			detail: 'Only this machine changed it, so this version is pushed and every other machine installs it on its next sync.',
+		},
+		'edit/edit': {
+			kind: 'conflict', verdict: 'Conflict: nothing is touched',
+			detail: 'Both machines changed the file. dotsync keeps both versions exactly as they are and asks you to choose with dotsync resolve.',
+			fine: 'If both edits happen to be identical, there is nothing to resolve.',
+		},
+		'edit/del': {
+			kind: 'out', verdict: 'Your edit wins, and the file comes back',
+			detail: 'A modification always beats a deletion, so no work is lost. The edited version is pushed and restored on every machine.',
+		},
+		'del/same': {
+			kind: 'out', verdict: 'Deleted everywhere (after backups)',
+			detail: 'Inside a managed directory, your deletion propagates. Every other machine backs the file up before removing it.',
+			fine: 'If the whole directory is missing or empty, or it is a single-file entry, dotsync restores it instead of deleting it everywhere.',
+		},
+		'del/edit': {
+			kind: 'in', verdict: 'Their edit wins, and the file comes back',
+			detail: 'A modification always beats a deletion. The edited version is restored on this machine.',
+		},
+		'del/del': { kind: 'ok', verdict: 'Nothing to do', detail: 'Both sides deleted it, so dotsync simply forgets the file.' },
+	};
+
+	for (const root of document.querySelectorAll<HTMLElement>('[data-explorer]')) {
+		const result = root.querySelector<HTMLElement>('.result')!;
+		const update = () => {
+			const l = root.querySelector<HTMLInputElement>('input[name="local"]:checked')!.value;
+			const r = root.querySelector<HTMLInputElement>('input[name="remote"]:checked')!.value;
+			const o = table[`${l}/${r}`];
+			result.dataset.kind = o.kind;
+			root.querySelector('[data-verdict]')!.textContent = o.verdict;
+			root.querySelector('[data-detail]')!.textContent = o.detail;
+			root.querySelector('[data-fine]')!.textContent = o.fine ?? '';
+		};
+		root.addEventListener('change', update);
+		update();
+	}
+</script>
+
+<style>
+	.explorer {
+		border: 1px solid var(--ds-card-border);
+		border-radius: 0.9rem;
+		padding: 1.25rem;
+		margin-block: 1.5rem;
+		background: color-mix(in srgb, var(--sl-color-gray-6) 50%, transparent);
+	}
+	.controls { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+	fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+	legend { font-size: 0.9rem; color: var(--sl-color-gray-2); margin-bottom: 0.6rem; }
+	label { display: inline-flex; margin: 0 0.4rem 0.4rem 0; cursor: pointer; }
+	input { position: absolute; opacity: 0; pointer-events: none; }
+	label span {
+		padding: 0.35rem 0.85rem;
+		border-radius: 999px;
+		border: 1px solid var(--sl-color-gray-5);
+		font-size: 0.9rem;
+		transition: background-color 120ms, border-color 120ms, color 120ms;
+	}
+	label:hover span { border-color: var(--sl-color-accent); }
+	input:checked + span { background: var(--sl-color-accent); border-color: var(--sl-color-accent); color: var(--sl-color-black); font-weight: 600; }
+	input:focus-visible + span { outline: 2px solid var(--sl-color-accent-high); outline-offset: 2px; }
+	.result {
+		margin-top: 1.1rem;
+		padding: 1rem 1.1rem;
+		border-radius: 0.7rem;
+		border-left: 4px solid var(--kind);
+		background: color-mix(in srgb, var(--kind) 10%, transparent);
+	}
+	.result[data-kind='ok'] { --kind: var(--ds-ok); }
+	.result[data-kind='in'] { --kind: var(--ds-in); }
+	.result[data-kind='out'] { --kind: var(--ds-out); }
+	.result[data-kind='conflict'] { --kind: var(--ds-conflict); }
+	.verdict { font-weight: 700; font-size: 1.05rem; color: var(--sl-color-white); margin: 0; }
+	.dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--kind); margin-right: 0.5rem; }
+	.detail { margin: 0.35rem 0 0; color: var(--sl-color-gray-1); }
+	.fine { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--sl-color-gray-3); }
+	.fine:empty { display: none; }
+</style>

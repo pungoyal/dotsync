@@ -1,0 +1,75 @@
+---
+title: How sync works
+description: The three-way model behind dotsync. It shows how every machine knows who changed what, and why that makes sync predictable.
+---
+
+import DecisionExplorer from '../../../components/DecisionExplorer.astro';
+import ArchitectureDiagram from '../../../components/ArchitectureDiagram.astro';
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+dotsync rests on one idea: **for every managed file, each machine remembers the version it last agreed on with everyone else.** That remembered version is the *base*. With it, every situation has one obvious and safe answer.
+
+## Three versions of every file
+
+At each sync, dotsync looks at three versions of every managed file:
+
+- **Local**: the file on this machine, right now
+- **Remote**: the file in the shared repository, i.e. what the other machines last sent
+- **Base**: what this machine and the repository last agreed on
+
+Comparing local and remote alone can't tell you *who* changed a file. Comparing each of them with the base can:
+
+| Local vs. base | Remote vs. base | Meaning | dotsync |
+|---|---|---|---|
+| same | same | nobody changed it | nothing to do |
+| same | **changed** | another machine changed it | back up the local file, install the remote version |
+| **changed** | same | this machine changed it | push the local version |
+| **changed** | **changed** | both changed it | **conflict**: touch nothing, tell you |
+
+## Try it
+
+Pick what happened to a file on each side and see what dotsync does:
+
+<DecisionExplorer />
+
+## The pieces
+
+<ArchitectureDiagram />
+
+## One sync, step by step
+
+<Steps>
+
+1. **Lock.** An exclusive file lock makes sure the background agent and a manual `dotsync sync` never run at once.
+2. **Fetch** the shared repository. If it can't be reached, dotsync continues with the last copy it fetched, and local changes wait.
+3. **Reset the cache clone** to exactly the remote commit. The clone never holds anything that isn't on the remote, so it can't drift or get stuck.
+4. **Replay queued changes.** `add`, `remove` and `describe` are recorded on this machine and re-applied to the *current* remote manifest on each sync. That's how two machines can add different files at the same moment without either change getting lost.
+5. **Plan.** Compute local, remote and base for every file (a hash of content, type and executable bit), and decide as in the table above.
+6. **Apply** remote changes here. Right before replacing a file, dotsync reads it once more; if it changed in the meantime, the file is skipped and retried on the next sync.
+7. **Commit and push** this machine's changes, together with any manifest changes, in a single commit.
+8. **If the push is rejected** because another machine pushed first, go back to step 2 and redo everything on top of its commit. There are no merges and no rebases.
+9. **Save state.** The base of a sent file only moves **after the push has succeeded**.
+
+</Steps>
+
+## Deletions
+
+Deletions are where sync tools usually lose data, so dotsync handles them conservatively:
+
+- **Inside a managed directory**, deleting a file deletes it on every machine, and each of them backs it up first.
+- **A missing single-file entry**, or a **directory that is missing or empty**, means "not present on this machine", not "delete everywhere". It's restored. So `rm -rf ~/.config/nvim` (or an unmounted disk) can't wipe your config on every machine. To stop managing something, use `dotsync remove`.
+- **A modification always beats a deletion.** If one machine deletes a file that another changed, the changed version survives.
+
+## When there is no base yet
+
+The first time an entry is synced on a machine there is no base. For that first sync only:
+
+- a missing local file is installed
+- an identical local file is simply recorded
+- a **different** local file is backed up and replaced by the shared version, or reported as a conflict if the machine uses `--keep-existing` (`on_existing: "conflict"`)
+
+After that, the base exists, and the normal rules apply. If the same new file appears on two machines inside a managed directory, that's a conflict, not an overwrite.
+
+<Aside type="tip">
+Want the guarantees spelled out? See [Safety guarantees](/dotsync/concepts/safety/). Curious why dotsync copies files instead of symlinking them, or polls instead of watching? See [Design decisions](/dotsync/concepts/design-decisions/).
+</Aside>

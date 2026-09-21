@@ -1,0 +1,76 @@
+---
+title: Migrate from another tool
+description: Move to dotsync from GNU Stow, yadm, a bare git repository, chezmoi or Mackup.
+---
+
+import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components';
+
+Moving to dotsync always looks the same: make sure the real files are in place on **one** machine, `add` them there, then `init` every other machine.
+
+<Tabs>
+<TabItem label="GNU Stow / symlinks">
+
+Your dotfiles are symlinks into a directory like `~/dotfiles`. dotsync follows a target that is a symlink inside your home directory, so you can start straight away. For the cleanest result, though, replace the links with real files:
+
+<Steps>
+
+1. Turn each managed link into a regular file:
+
+   ```sh
+   for f in ~/.gitconfig ~/.zshrc; do cp --remove-destination "$(readlink -f "$f")" "$f"; done
+   # macOS without GNU coreutils:
+   for f in ~/.gitconfig ~/.zshrc; do src=$(readlink "$f"); rm "$f"; cp "$src" "$f"; done
+   ```
+
+   For directories, `stow -D <package>` removes the links; then copy the package directory into place.
+
+2. `dotsync init <url>` and `dotsync add` the real paths.
+3. On other machines, run `stow -D` first, then `dotsync init <url>`.
+
+</Steps>
+
+</TabItem>
+<TabItem label="yadm / bare git">
+
+Your home directory *is* a git work tree (`yadm`, or `git --git-dir=$HOME/.cfg --work-tree=$HOME`). The files are already real files in place.
+
+<Steps>
+
+1. On one machine, `dotsync init <new-url>` and `dotsync add` each file or directory you want managed.
+2. On every other machine, `dotsync init <new-url>`.
+3. Once everything shows `ok`, stop the old setup. yadm keeps its repository in `~/.local/share/yadm/repo.git`; for a bare repo, remove the `--git-dir`. Your files stay where they are.
+
+</Steps>
+
+<Aside>Use a **new** repository for dotsync. Its layout (`manifest.json` plus `files/`) differs from a home-directory work tree.</Aside>
+
+</TabItem>
+<TabItem label="chezmoi">
+
+chezmoi renders files from a source directory, so your real files are already in place.
+
+<Steps>
+
+1. On one machine, run `chezmoi apply` so the files are up to date, then `dotsync init <new-url>` and `dotsync add` them.
+2. Templated files render differently per machine. Either pick one rendering and move the differences into [local include files](/dotsync/guides/differences/#shared-file-plus-local-overrides), or keep those files under chezmoi.
+3. On other machines, `dotsync init <new-url>`, then stop running `chezmoi apply` for the migrated files.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Mackup">
+
+Mackup moves files into a cloud folder and symlinks them back.
+
+<Steps>
+
+1. Run `mackup restore`, then `mackup uninstall`. That copies the files back into place as real files.
+2. `dotsync init <url>` and `dotsync add` the files you want.
+3. On other machines, run `mackup uninstall`, then `dotsync init <url>`.
+
+</Steps>
+
+</TabItem>
+</Tabs>
+
+After migrating, run `dotsync status` on each machine. Every entry should say `ok`.

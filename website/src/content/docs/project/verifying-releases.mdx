@@ -1,0 +1,56 @@
+---
+title: Verifying releases
+description: Check that a dotsync binary is exactly what the project's release workflow built, using checksums and signed build provenance.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Every release is built from a tagged commit by GitHub Actions. Nobody builds or uploads release binaries by hand. Each release publishes:
+
+| Artifact | Purpose |
+|---|---|
+| `dotsync_<version>_<os>_<arch>.tar.gz` | the binary, plus `LICENSE`, `README.md` and `CHANGELOG.md` |
+| `checksums.txt` | SHA-256 of every archive |
+| `*.sbom.json` | a software bill of materials (SPDX) for each archive |
+| build provenance attestation | a signed [SLSA provenance](https://slsa.dev/provenance) statement tying each archive to the workflow run, commit and repository that built it |
+
+Attestations are signed through Sigstore with the release workflow's own short-lived identity. There's no long-lived signing key that could leak.
+
+## Verify provenance (recommended)
+
+<Steps>
+
+1. Install the [GitHub CLI](https://cli.github.com) 2.49 or newer.
+2. Verify the archive you downloaded:
+
+   ```console frame="terminal"
+   $ gh attestation verify dotsync_0.1.0_darwin_arm64.tar.gz --repo pungoyal/dotsync
+   ✓ Verification succeeded!
+   ```
+
+</Steps>
+
+This proves the file was built by this repository's release workflow from a commit in this repository. To see exactly which workflow run and commit:
+
+```sh
+gh attestation verify dotsync_0.1.0_darwin_arm64.tar.gz --repo pungoyal/dotsync --format json \
+  | jq '.[0].verificationResult.signature.certificate | {sourceRepositoryRef, sourceRepositoryDigest, runInvocationURI}'
+```
+
+<Aside type="tip">
+The install script runs this check automatically when `gh` is available. Set `DOTSYNC_REQUIRE_ATTESTATION=1` to make it mandatory.
+</Aside>
+
+## Verify the checksum
+
+```sh
+curl -fsSLO https://github.com/pungoyal/dotsync/releases/download/v0.1.0/checksums.txt
+shasum -a 256 --check --ignore-missing checksums.txt   # macOS
+sha256sum --check --ignore-missing checksums.txt       # Linux
+```
+
+A checksum only proves the download wasn't corrupted in transit: someone who can replace the archive can replace `checksums.txt` too. The attestation proves where the file came from.
+
+## Reproducible builds
+
+Release binaries are built with `CGO_ENABLED=0` and `-trimpath`, with timestamps taken from the commit rather than the build machine. With the same Go version (`go version -m dotsync` shows it), building the tagged commit reproduces the binaries.

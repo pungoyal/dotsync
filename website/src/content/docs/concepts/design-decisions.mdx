@@ -1,0 +1,40 @@
+---
+title: Design decisions
+description: Why dotsync copies instead of symlinking, uses git as its transport, polls instead of watching, and has no templates.
+---
+
+Each of these decisions trades some capability for simplicity or safety. Here is the reasoning.
+
+## Copies, not symlinks
+
+Many dotfile tools symlink `~/.gitconfig` into a repository. dotsync keeps **real files** in place:
+
+- Many applications save settings by writing a new file and renaming it over the old one. That silently replaces the symlink with a regular file, and the tool loses track of it.
+- Real files let dotsync tell *"you edited it"* apart from *"the repository changed"*. That distinction is what conflict detection is built on.
+- Your home directory stays normal. Uninstall dotsync and everything keeps working.
+
+If a target already *is* a symlink inside your home directory, for example from an old Stow setup, dotsync follows it and updates the real file.
+
+## Git as the transport
+
+A private git repository is something everyone already knows how to create, host, back up and secure. It brings full history, an atomic compare-and-swap (a rejected push means someone else pushed first), and works on every platform. dotsync uses git as a **transport and history**, not as a merge engine. It never merges or rebases, so you'll never face a git conflict in your dotfiles repository.
+
+## Three-way state instead of timestamps
+
+Timestamps lie. Clocks drift, file systems round them, and tools preserve old mtimes when copying. Content hashes compared against a remembered base are exact. They correctly separate "I changed it" from "they changed it" even after months offline.
+
+## Polling instead of file watching
+
+Watching files needs a long-running daemon, platform-specific APIs (FSEvents, inotify) and care around editors that save in several steps. Dotfiles change rarely, and a few minutes of delay costs nothing. A scheduled job that runs, syncs and exits is simpler, uses no resources in between, and can't leak memory or get stuck. `dotsync sync` is there when you want it now.
+
+## No templating
+
+Templates make files differ per machine by design, which is the opposite of what dotsync is for. They also make "edit the real file" impossible, because the real file is generated output. Per-OS entries, per-machine exclusions and include files [cover most needs](/dotsync/guides/differences/). When you truly need templates, chezmoi does them well.
+
+## Keep secrets out, rather than encrypting them
+
+See the [security model](/dotsync/concepts/security-model/#why-not-encrypt-secrets-into-the-repository).
+
+## Safe defaults, explicit overrides
+
+When a choice could lose data, dotsync picks the safe option and makes the other one explicit. Deletions don't propagate from missing directories. Files that look like secrets are blocked unless allowed. Conflicts wait for you. The single exception is the first sync of a new machine, which replaces differing files after backing them up, because the alternative (dozens of conflicts on day one) is worse. Even that can be turned off with `--keep-existing`.

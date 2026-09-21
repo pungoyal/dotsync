@@ -1,0 +1,49 @@
+---
+title: Introduction
+description: What dotsync is, the problem it solves, and whether it's the right tool for you.
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+**dotsync keeps your dotfiles identical on every Mac and Linux machine you use, without you having to think about it.**
+
+You tell it once which files matter, such as `~/.gitconfig`, `~/.config/fish/config.fish` or your whole `~/.config/nvim`. From then on you just edit those files as usual, on any machine. A small background job on each machine syncs them through a private git repository every few minutes.
+
+## The problem
+
+Keeping configuration consistent across machines usually means one of these:
+
+- **Copying files around by hand**, and forgetting which machine has the good version.
+- **A dotfiles repo plus a deploy tool**, where every edit is a small ritual: edit, commit, push, then pull and apply on every other machine. Skip a step and machines quietly drift apart.
+- **Symlinks into a synced folder**, which break when an application replaces its config file, and which let one machine's half-finished edit overwrite everyone else's.
+
+## What dotsync does differently
+
+- **You edit the real files.** There is no source directory to remember and no apply step.
+- **It syncs in both directions, automatically.** Changes flow from whichever machine made them to every other machine.
+- **It is careful.** Every file it replaces is backed up first. If two machines changed the same file, it doesn't pick a winner; it keeps both versions and tells you.
+- **It keeps secrets home.** Private keys, cloud credentials and tokens are refused before they reach the repository.
+- **It has almost no moving parts:** one binary, `git`, and a private repository.
+
+## Is it right for you?
+
+dotsync is a good fit if:
+
+- you use two or more Macs and/or Linux machines
+- you want your configuration to simply *be the same* everywhere
+- you'd rather not run commands to keep things in sync
+
+It's probably **not** the right tool if:
+
+- you need heavy **templating**, where one file renders differently per machine. [chezmoi](https://www.chezmoi.io/) is excellent for that. (dotsync does support [per-OS entries and per-machine exclusions](/dotsync/guides/differences/).)
+- you want to sync **Windows** machines
+- you want **real-time** sync. dotsync syncs every few minutes, by design.
+
+See the [comparison with other tools](/dotsync/concepts/comparison/) for more detail.
+
+## Next steps
+
+<CardGrid>
+	<LinkCard title="Install dotsync" href="/dotsync/start/installation/" />
+	<LinkCard title="Quick start" description="Two machines in sync in five minutes." href="/dotsync/start/quick-start/" />
+</CardGrid>

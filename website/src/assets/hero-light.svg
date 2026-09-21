@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 420" fill="none" role="img" aria-labelledby="t d">
+  <title id="t">Three machines synchronizing through one private git repository</title>
+  <desc id="d">A laptop running macOS, a desktop running Linux and a server running Linux, each connected in both directions to a shared repository holding manifest.json and files.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M1 1 9 5 1 9" stroke="#0f766e" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <radialGradient id="g" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#0f766e" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#0f766e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="260" cy="215" r="150" fill="url(#g)"/>
+  <!-- connectors -->
+  <g stroke="#0f766e" stroke-width="2" stroke-dasharray="5 6" stroke-linecap="round" marker-start="url(#a)" marker-end="url(#a)">
+    <path d="M150 128 C 185 150, 200 165, 213 180"/>
+    <path d="M370 128 C 335 150, 320 165, 307 180"/>
+    <path d="M260 322 L 260 272"/>
+  </g>
+  <!-- repository -->
+  <g>
+    <rect x="198" y="176" width="124" height="92" rx="14" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+    <path d="M216 198h20l6 6h46v4H216z" fill="#0f766e" opacity=".9"/>
+    <rect x="216" y="216" width="88" height="8" rx="4" fill="#14b8a6" opacity=".85"/>
+    <rect x="216" y="231" width="64" height="8" rx="4" fill="#566273" opacity=".6"/>
+    <rect x="216" y="246" width="76" height="8" rx="4" fill="#566273" opacity=".6"/>
+    <text x="260" y="166" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#1c2533">private git repo</text>
+  </g>
+  <!-- laptop (macOS) -->
+  <g>
+    <rect x="62" y="48" width="104" height="68" rx="8" fill="#ffffff" stroke="#8a97a6" stroke-width="2"/>
+    <rect x="72" y="58" width="84" height="48" rx="3" fill="#eef2f6"/>
+    <path d="M80 70h30M80 80h46M80 90h22" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/>
+    <path d="M50 120h128l-8 8H58z" fill="#8a97a6"/>
+    <text x="114" y="150" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="12.5" fill="#566273">laptop · macOS</text>
+  </g>
+  <!-- desktop (Linux) -->
+  <g>
+    <rect x="352" y="42" width="112" height="76" rx="8" fill="#ffffff" stroke="#8a97a6" stroke-width="2"/>
+    <rect x="362" y="52" width="92" height="56" rx="3" fill="#eef2f6"/>
+    <path d="M370 64h40M370 74h56M370 84h30M370 94h44" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/>
+    <path d="M400 118h20l4 12h-28z" fill="#8a97a6"/>
+    <text x="408" y="150" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="12.5" fill="#566273">desktop · Linux</text>
+  </g>
+  <!-- server (Linux) -->
+  <g>
+    <rect x="206" y="326" width="108" height="26" rx="6" fill="#ffffff" stroke="#8a97a6" stroke-width="2"/>
+    <rect x="206" y="356" width="108" height="26" rx="6" fill="#ffffff" stroke="#8a97a6" stroke-width="2"/>
+    <circle cx="222" cy="339" r="3.5" fill="#0f766e"/><circle cx="222" cy="369" r="3.5" fill="#0f766e"/>
+    <path d="M236 339h56M236 369h40" stroke="#566273" stroke-width="3" stroke-linecap="round" opacity=".6"/>
+    <text x="260" y="404" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="12.5" fill="#566273">server · Linux</text>
+  </g>
+</svg>

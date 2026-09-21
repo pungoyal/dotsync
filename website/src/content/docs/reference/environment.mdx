@@ -1,0 +1,24 @@
+---
+title: Environment variables
+description: Environment variables that affect dotsync and its install script.
+---
+
+## dotsync
+
+| Variable | Effect |
+|---|---|
+| `HOME` | the home directory. Targets must resolve inside it |
+| `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` | where dotsync keeps its [own files](/dotsync/reference/files/). Also usable in [targets](/dotsync/reference/manifest/#targets), along with `XDG_CACHE_HOME` |
+| `DOTSYNC_HOSTNAME` | machine name in commit messages (default: the short hostname) |
+| `DOTSYNC_NO_NOTIFY` | set to any value to disable desktop notifications |
+| `GIT_SSH_COMMAND` | used as-is if set; otherwise dotsync runs `ssh -o BatchMode=yes -o ConnectTimeout=15` so it never prompts |
+
+dotsync always runs git with `GIT_TERMINAL_PROMPT=0` and `LC_ALL=C`.
+
+## Install script
+
+| Variable | Default | Effect |
+|---|---|---|
+| `DOTSYNC_VERSION` | latest | release tag to install, e.g. `v0.1.0` |
+| `DOTSYNC_BIN_DIR` | `~/.local/bin` | install directory |
+| `DOTSYNC_REQUIRE_ATTESTATION` | `0` | `1` fails the install unless the build provenance verifies (needs the GitHub CLI) |

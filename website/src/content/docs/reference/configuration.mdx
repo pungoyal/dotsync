@@ -1,0 +1,26 @@
+---
+title: Machine configuration
+description: The per-machine config file, which is never synced.
+---
+
+`~/.config/dotsync/config.json` holds settings for **one machine**. It is never synced. `dotsync init` creates it.
+
+```json title="~/.config/dotsync/config.json"
+{
+  "remote": "git@github.com:you/dotfiles.git",
+  "branch": "main",
+  "interval": 300,
+  "exclude": ["karabiner/karabiner.json"],
+  "on_existing": "remote"
+}
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `remote` | | URL of the shared repository |
+| `branch` | `main` | branch to sync |
+| `interval` | `300` | seconds between background syncs. Run `dotsync agent install` after changing it |
+| `exclude` | `[]` | manifest `source`s this machine doesn't manage. Their local files are left alone |
+| `on_existing` | `"remote"` | what happens when an entry is synced here for the first time and a **different** local file already exists: `"remote"` backs it up and installs the shared version; `"conflict"` leaves it untouched and reports a conflict. `init --keep-existing` sets `"conflict"` |
+
+The file is located through `$XDG_CONFIG_HOME` if that's set.

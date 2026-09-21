@@ -1,0 +1,154 @@
+---
+title: Commands
+description: Every dotsync command and flag.
+tableOfContents:
+  maxHeadingLevel: 2
+---
+
+```text
+dotsync <command> [flags] [arguments]
+```
+
+- Flags can come before or after arguments. `-flag` and `--flag` both work, and `--` ends flag parsing.
+- Every command accepts `-h` for its own help.
+- `add`, `remove`, `describe` and `resolve` run a sync straight away, so you see the result immediately.
+
+| Command | Alias | Purpose |
+|---|---|---|
+| [`init`](#init) | | set up this machine |
+| [`add`](#add) | | start managing files or directories, on every machine |
+| [`remove`](#remove) | `rm` | stop managing entries, on every machine |
+| [`describe`](#describe) | | change an entry's description |
+| [`sync`](#sync) | | synchronize now |
+| [`status`](#status) | `st` | managed files and their state on this machine |
+| [`list`](#list) | `ls` | the shared manifest |
+| [`diff`](#diff) | | differences between this machine and the remote |
+| [`resolve`](#resolve) | | settle conflicts |
+| [`log`](#log) | | history of the shared repository |
+| [`agent`](#agent) | | manage the background agent |
+| [`version`](#version) | | version and build information |
+
+## init
+
+```text
+dotsync init [flags] <git-url>
+```
+
+Sets up this machine. It clones the repository, creates the manifest if the repository is empty, writes the [machine configuration](/dotsync/reference/configuration/), copies the binary to `~/.local/bin`, runs the first sync, and installs the [background agent](/dotsync/guides/background-agent/). Safe to run again.
+
+| Flag | Description |
+|---|---|
+| `--keep-existing` | report existing, differing local files as conflicts instead of backing them up and replacing them |
+| `--branch <name>` | branch to sync (default `main`) |
+| `--interval <seconds>` | background sync interval (default `300`) |
+| `--no-agent` | don't install the background agent |
+| `--no-install` | don't copy the binary to `~/.local/bin` |
+
+## add
+
+```text
+dotsync add [flags] <path>...
+```
+
+Starts managing files or directories on every machine. Paths must be inside `$HOME`. Files that look like secrets are refused. For directories, `add` reports how many files will be held back as secrets.
+
+| Flag | Description |
+|---|---|
+| `-d`, `--description <text>` | description (single path only; defaults to the file name) |
+| `--source <path>` | location under `files/` in the repository (single path only). The default is derived from the path: `~/.config/fish/config.fish` becomes `fish/config.fish` |
+| `--ignore <glob>` | directories: a pattern not to sync. Repeatable |
+| `--os darwin\|linux` | only manage the entry on this OS. Repeatable |
+| `--allow-secrets` | turn off the [secret filters](/dotsync/reference/secret-rules/) for this entry |
+| `--no-sync` | only queue the change; the next sync sends it |
+
+## remove
+
+```text
+dotsync remove [--no-sync] <path|source>...
+```
+
+Stops managing entries on **every** machine. Local copies stay in place everywhere as ordinary unmanaged files. The content remains in the repository history.
+
+## describe
+
+```text
+dotsync describe <path|source> <description>
+```
+
+Changes an entry's description in the manifest.
+
+## sync
+
+```text
+dotsync sync [-q]
+```
+
+Runs one synchronization. The background agent runs `dotsync sync -q` on a schedule.
+
+| Flag | Description |
+|---|---|
+| `-q`, `--quiet` | print nothing; exit immediately (status 0) if another sync is running; post desktop notifications for new conflicts and authentication failures |
+
+The output is explained in [Output and exit codes](/dotsync/reference/output/).
+
+## status
+
+```text
+dotsync status [-v] [--fetch] [--json]
+```
+
+Shows every entry and its state on this machine, plus the last sync result, the agent state, queued changes and conflicts.
+
+| Flag | Description |
+|---|---|
+| `-v` | list every file, not just those that need attention |
+| `--fetch` | fetch from the remote first. Without it, `status` compares against the last fetched state, which also works offline |
+| `--json` | machine-readable output |
+
+## list
+
+```text
+dotsync list [--json]
+```
+
+Prints the shared manifest, including entries that are skipped on this machine.
+
+## diff
+
+```text
+dotsync diff [--fetch] [path...]
+```
+
+Shows a unified diff from the remote version (`-`) to the local version (`+`) for every file that differs, or only for the given paths. A directory path covers everything below it.
+
+## resolve
+
+```text
+dotsync resolve <path>... --keep local|remote
+```
+
+Settles [conflicts](/dotsync/guides/resolve-conflicts/). `--keep local` sends this machine's version. `--keep remote` backs up the local file and installs the remote version. A directory path resolves every conflict below it.
+
+## log
+
+```text
+dotsync log [-n <count>]
+```
+
+Shows recent commits to the shared repository (default 20). Each commit names the machine that made it.
+
+## agent
+
+```text
+dotsync agent install|uninstall|status
+```
+
+Manages the [background agent](/dotsync/guides/background-agent/). Run `install` again after changing `interval`, moving `git`, or changing `XDG_*` variables.
+
+## version
+
+```text
+dotsync version
+```
+
+Prints the version, commit, build date, Go version and platform.

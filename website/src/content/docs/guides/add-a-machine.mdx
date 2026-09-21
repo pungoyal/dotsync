@@ -1,0 +1,53 @@
+---
+title: Add another machine
+description: Bring a new or existing Mac or Linux machine into sync, and choose what happens to files it already has.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+<Steps>
+
+1. [Install dotsync](/dotsync/start/installation/) and make sure `git` can reach your repository without a password prompt:
+
+   ```sh
+   git ls-remote git@github.com:you/dotfiles.git
+   ```
+
+2. Connect the machine:
+
+   ```sh
+   dotsync init git@github.com:you/dotfiles.git
+   ```
+
+3. Check the result:
+
+   ```sh
+   dotsync status
+   ```
+
+</Steps>
+
+## Files that already exist
+
+A new machine often has its own versions of managed files: a distribution's default `.bashrc`, or an old `.gitconfig`. You choose what happens to them:
+
+| | `dotsync init <url>` (default) | `dotsync init --keep-existing <url>` |
+|---|---|---|
+| File missing here | installed | installed |
+| Identical file here | left as is | left as is |
+| **Different** file here | **backed up**, then replaced by the shared version | left untouched and reported as a **conflict** |
+
+The default gets a new machine consistent with no questions asked. Nothing is lost, because every replaced file is in `~/.local/state/dotsync/backups/`. Use `--keep-existing` when the machine has changes worth reviewing file by file. Then [resolve each conflict](/dotsync/guides/resolve-conflicts/).
+
+<Aside>
+This choice only applies the **first time** an entry is synced on a machine. After that, a file that changes on both sides is always a conflict. The setting is stored as `on_existing` in the [machine configuration](/dotsync/reference/configuration/).
+</Aside>
+
+## A machine that shouldn't get everything
+
+- Entries marked for another OS (`"os": ["darwin"]`) are skipped automatically.
+- To skip an entry on this machine only, add it to `exclude` in `~/.config/dotsync/config.json`. See [Per-OS and per-machine differences](/dotsync/guides/differences/).
+
+## Replacing a machine
+
+When you retire a machine, there's nothing to undo on the others. On the old machine you can [uninstall](/dotsync/guides/uninstall/) dotsync, or just wipe it.

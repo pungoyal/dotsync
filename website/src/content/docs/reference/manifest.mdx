@@ -1,0 +1,124 @@
+---
+title: Manifest
+description: Every field of manifest.json, the shared list of managed files.
+---
+
+import { Aside, Badge, FileTree } from '@astrojs/starlight/components';
+
+`manifest.json`, at the root of your dotfiles repository, is the authoritative list of what is managed. `dotsync add`, `remove` and `describe` edit it for you. You can also edit it by hand in any clone and push.
+
+## Example
+
+```json title="manifest.json"
+{
+  "version": 1,
+  "entries": [
+    {
+      "source": "fish/config.fish",
+      "target": "~/.config/fish/config.fish",
+      "description": "Fish shell configuration",
+      "type": "file"
+    },
+    {
+      "source": "nvim",
+      "target": "$XDG_CONFIG_HOME/nvim",
+      "description": "Neovim",
+      "type": "dir",
+      "ignore": ["lazy-lock.json", "spell/*.spl"]
+    },
+    {
+      "source": "karabiner/karabiner.json",
+      "target": "~/.config/karabiner/karabiner.json",
+      "description": "Keyboard remapping",
+      "os": ["darwin"],
+      "write": "inplace"
+    },
+    {
+      "source": "ssh/config",
+      "target": "~/.ssh/config",
+      "description": "SSH client configuration",
+      "mode": "0600"
+    }
+  ]
+}
+```
+
+## Entry fields
+
+### `source` <Badge text="required" variant="note" size="small" />
+
+Path of the content under `files/` in the repository. It must be relative, with no `..` or `.git` components. Two sources may not overlap (one inside the other); they're compared case-insensitively, because macOS file systems usually are.
+
+### `target` <Badge text="required" variant="note" size="small" />
+
+Where the file or directory lives on each machine, written portably. See [targets](#targets).
+
+### `description` <Badge text="required" variant="note" size="small" />
+
+Short, human-readable text shown by `status` and `list`.
+
+### `type`
+
+`"file"` or `"dir"`. `dotsync add` always sets it. If it's missing, dotsync infers it from the repository, then from the local path.
+
+### `os`
+
+List of operating systems that manage this entry: `"darwin"`, `"linux"`. Other machines skip it and show it as *skipped*.
+
+### `mode`
+
+Octal permissions forced on every machine, e.g. `"0600"`. Without it, each machine keeps its own permissions, and only the executable bit is synced.
+
+### `write`
+
+How local files are replaced:
+
+- `"atomic"` (default): write a temporary file and rename it into place. Readers never see a half-written file.
+- `"inplace"`: rewrite the existing file, keeping its inode. Use it for applications that watch the inode, or containers that bind-mount a single file.
+
+### `ignore`
+
+Directory entries only: glob patterns for files that should never sync. Each pattern is matched against every path component's name and against the path so far, relative to the entry. `*` also matches `/`. A pattern that matches a directory skips everything below it. These are always ignored: `.DS_Store`, `._*`, `*.swp`, `*.swo`, `*~`, `.#*`, `.git`, `__pycache__`, `*.pyc`.
+
+### `allow_secrets`
+
+`true` turns off the [secret filters](/dotsync/reference/secret-rules/) for this entry.
+
+<Aside>
+Fields dotsync doesn't recognise are preserved when it rewrites the manifest, so newer versions can add fields without older ones dropping them.
+</Aside>
+
+## Targets
+
+The same target text must work on every machine:
+
+| Form | Expands to |
+|---|---|
+| `~/…` | `$HOME/…` |
+| `$XDG_CONFIG_HOME/…` | `$XDG_CONFIG_HOME`, or `~/.config` if unset |
+| `$XDG_DATA_HOME/…` | `$XDG_DATA_HOME`, or `~/.local/share` if unset |
+| `$XDG_STATE_HOME/…` | `$XDG_STATE_HOME`, or `~/.local/state` if unset |
+| `$XDG_CACHE_HOME/…` | `$XDG_CACHE_HOME`, or `~/.cache` if unset |
+| `$VAR/…` or `${VAR}/…` | the variable's value, which must be an absolute path. On a machine where it's unset, the entry reports an error |
+
+A target must resolve **inside `$HOME`**, and outside dotsync's own directories. Absolute paths are rejected because they're machine-specific. Two targets may not overlap.
+
+## Validation
+
+- If `manifest.json` isn't valid JSON, a sync **stops before changing anything** and reports the parse error.
+- An invalid entry is reported by `sync` and `status` and skipped. Every other entry syncs normally, and the invalid entry's history on each machine is kept for when it's fixed.
+- A top-level JSON array of entries is accepted too, and rewritten in the full form.
+
+## Repository layout
+
+<FileTree>
+- manifest.json the list of managed entries
+- files/
+  - fish/config.fish
+  - gitconfig
+  - nvim/
+    - init.lua
+    - lua/…
+- README.md created by `init`
+- .gitattributes `* -text`: content is stored byte for byte
+</FileTree>

@@ -1,0 +1,102 @@
+---
+title: Installation
+description: Install dotsync on macOS or Linux with the install script, go install, a release binary, or from source.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+dotsync is a single static binary for **macOS and Linux** on **amd64 and arm64**. It needs `git` 2.20 or newer at runtime, and nothing else.
+
+## Install
+
+<Tabs syncKey="install">
+<TabItem label="Install script (recommended)">
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh
+```
+
+The script:
+
+1. picks the right archive for your OS and CPU from the latest release
+2. checks its **SHA-256 checksum** against the release's `checksums.txt`
+3. checks the **signed build provenance** with `gh attestation verify`, if the [GitHub CLI](https://cli.github.com) is installed
+4. installs `dotsync` to `~/.local/bin`
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DOTSYNC_VERSION` | latest | install a specific release, e.g. `v0.1.0` |
+| `DOTSYNC_BIN_DIR` | `~/.local/bin` | install location |
+| `DOTSYNC_REQUIRE_ATTESTATION` | `0` | set to `1` to refuse to install unless the provenance check passes |
+
+</TabItem>
+<TabItem label="go install">
+
+With Go 1.23 or newer:
+
+```sh
+go install github.com/pungoyal/dotsync/cmd/dotsync@latest
+```
+
+The binary ends up in `$(go env GOBIN)`, or `~/go/bin` if that's unset.
+
+</TabItem>
+<TabItem label="Release binary">
+
+1. Download `dotsync_<version>_<os>_<arch>.tar.gz` from the [latest release](https://github.com/pungoyal/dotsync/releases/latest).
+2. Optionally, [verify it](/dotsync/project/verifying-releases/).
+3. Extract it and move `dotsync` somewhere on your `PATH`:
+
+   ```sh
+   tar -xzf dotsync_*_darwin_arm64.tar.gz dotsync
+   install -m 0755 dotsync ~/.local/bin/
+   ```
+
+</TabItem>
+<TabItem label="From source">
+
+```sh
+git clone https://github.com/pungoyal/dotsync
+cd dotsync
+make build        # → bin/dotsync
+```
+
+</TabItem>
+</Tabs>
+
+## Put it on your PATH
+
+If `dotsync version` says *command not found*, add `~/.local/bin` to your `PATH`:
+
+<Tabs syncKey="shell">
+<TabItem label="zsh">
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
+```
+</TabItem>
+<TabItem label="bash">
+```sh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && exec bash
+```
+</TabItem>
+<TabItem label="fish">
+```fish
+fish_add_path ~/.local/bin
+```
+</TabItem>
+</Tabs>
+
+## Check it works
+
+```console frame="terminal"
+$ dotsync version
+dotsync 0.1.0 (289c20a, 2026-09-21T06:18:53Z) go1.27.1 darwin/arm64
+```
+
+<Aside type="tip">
+`dotsync init` also copies the binary to `~/.local/bin/dotsync`, which is where the background agent runs it from. You don't need to install it there yourself.
+</Aside>
+
+## Next
+
+Continue with the [quick start](/dotsync/start/quick-start/).

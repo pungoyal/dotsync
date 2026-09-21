@@ -1,0 +1,87 @@
+---
+title: The background agent
+description: How dotsync syncs automatically with launchd, systemd or cron, and how to make git work unattended.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`dotsync init` installs a scheduled job that runs `dotsync sync -q` every five minutes. There's no long-running daemon: the job starts, syncs, and exits.
+
+| Platform | Mechanism | Defined in |
+|---|---|---|
+| macOS | launchd user agent `io.github.dotsync` | `~/Library/LaunchAgents/io.github.dotsync.plist` |
+| Linux with systemd | user timer `dotsync.timer` | `~/.config/systemd/user/dotsync.{service,timer}` |
+| Linux without systemd | crontab line tagged `# dotsync-agent` | your user crontab |
+
+It also runs at login (macOS) or one minute after boot (systemd). The systemd timer catches up on runs missed while the machine was asleep.
+
+```sh
+dotsync agent status       # installed? loaded?
+dotsync agent install      # (re)install, e.g. after changing the interval
+dotsync agent uninstall
+```
+
+## Change the interval
+
+Set `interval` (in seconds) in `~/.config/dotsync/config.json`, then run `dotsync agent install`. With cron the interval is rounded to whole minutes.
+
+## Environment
+
+launchd and cron don't read your shell configuration. So when the agent is installed, dotsync writes `PATH` (including the directory `git` was found in), `HOME` and any `XDG_*` base directories you've set into the job definition. If you move `git` or change those variables, run `dotsync agent install` again.
+
+## Git access without prompts
+
+The agent can't type passwords or passphrases. `git ls-remote <your-url>` must succeed without any prompt:
+
+<Tabs>
+<TabItem label="SSH on macOS">
+Store the key's passphrase in the Keychain once, and let `ssh` load it automatically:
+
+```ssh-config title="~/.ssh/config"
+Host github.com
+  AddKeysToAgent yes
+  UseKeychain yes
+  IdentityFile ~/.ssh/id_ed25519
+```
+```sh
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+```
+</TabItem>
+<TabItem label="SSH on Linux">
+systemd user services usually can't reach your desktop session's `ssh-agent`. The simplest reliable option is a **dedicated deploy key without a passphrase**, allowed to write to this one repository:
+
+```sh
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/dotsync -C "dotsync@$(hostname)"
+```
+```ssh-config title="~/.ssh/config"
+Host github.com
+  IdentityFile ~/.ssh/dotsync
+  IdentitiesOnly yes
+```
+Add `~/.ssh/dotsync.pub` as a deploy key with **write access** in the repository's settings.
+</TabItem>
+<TabItem label="HTTPS">
+Use a credential helper, and authenticate once interactively:
+
+```sh
+git config --global credential.helper osxkeychain   # macOS
+git config --global credential.helper libsecret     # Linux desktop
+gh auth setup-git                                    # or let the GitHub CLI handle it
+```
+</TabItem>
+</Tabs>
+
+If authentication fails, `dotsync status` shows the exact git error, and the agent posts a desktop notification.
+
+## Logs and notifications
+
+| File | Contents |
+|---|---|
+| `~/.local/state/dotsync/sync.log` | every change, conflict and error, plus one summary line per sync (rotated at 1 MiB) |
+| `~/.local/state/dotsync/agent.log` | anything the scheduled job printed |
+
+The agent notifies you (Notification Center on macOS, `notify-send` on Linux) when a **new** conflict appears or git starts failing to authenticate. Set `DOTSYNC_NO_NOTIFY=1` to turn this off.
+
+<Aside type="tip" title="Headless Linux servers">
+Without lingering, systemd user timers only run while you're logged in. Enable it once with `loginctl enable-linger $USER`.
+</Aside>

@@ -1,0 +1,16 @@
+---
+title: Uninstall
+description: Remove dotsync from a machine, leaving your dotfiles exactly as they are.
+---
+
+Your dotfiles are ordinary files, so uninstalling dotsync leaves them exactly as they are.
+
+```sh
+dotsync agent uninstall
+rm -rf ~/.config/dotsync ~/.local/share/dotsync ~/.local/state/dotsync
+rm ~/.local/bin/dotsync
+```
+
+- Other machines are unaffected and keep syncing with each other.
+- `~/.local/state/dotsync` holds your **backups**. Copy out anything you want to keep before deleting it.
+- The shared repository stays on your git host until you delete it there.

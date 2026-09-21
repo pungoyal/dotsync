@@ -1,0 +1,25 @@
+---
+title: Files and locations
+description: Everything dotsync stores on a machine, and what each file is for.
+---
+
+Everything dotsync keeps on a machine lives under the standard XDG base directories. The paths below are the defaults, and they move if you set the corresponding `XDG_*` variable.
+
+| Path | Purpose | Safe to delete? |
+|---|---|---|
+| `~/.config/dotsync/config.json` | [machine configuration](/dotsync/reference/configuration/) | only if you `init` again |
+| `~/.local/share/dotsync/repo/` | cache clone of the shared repository. Reset on every sync, never edit it | yes; `init` recreates it |
+| `~/.local/state/dotsync/state.json` | the base of every managed file, queued changes, conflicts, last sync result | yes, but see below |
+| `~/.local/state/dotsync/backups/<run>/` | copies of local files dotsync replaced or deleted | yes; old runs can go any time |
+| `~/.local/state/dotsync/conflicts/` | a copy of the remote side of each current conflict, for `diff` | yes |
+| `~/.local/state/dotsync/sync.log` | log of changes, conflicts and errors (rotated to `sync.log.1` at 1 MiB) | yes |
+| `~/.local/state/dotsync/agent.log` | output of the scheduled job | yes |
+| `~/.local/state/dotsync/lock` | prevents two syncs running at once | yes, when no sync is running |
+| `~/.local/bin/dotsync` | the binary the agent runs | reinstall with `init` |
+| `~/Library/LaunchAgents/io.github.dotsync.plist` | macOS agent | use `dotsync agent uninstall` |
+| `~/.config/systemd/user/dotsync.{service,timer}` | Linux agent (systemd) | use `dotsync agent uninstall` |
+
+- If `state.json` is **corrupted**, dotsync sets it aside. On the next sync, every file that differs from the remote becomes a **conflict** for you to review.
+- If it's **deleted**, every entry counts as newly managed on this machine, as on a fresh `init`. Differing local files are backed up and replaced, or become conflicts if `on_existing` is `"conflict"`.
+
+Either way, files that match the remote are simply recorded again, and nothing is lost without a backup.

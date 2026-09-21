@@ -7,6 +7,12 @@
 </p>
 
 <p align="center">
+  <a href="https://pungoyal.github.io/dotsync/"><strong>Documentation</strong></a> ·
+  <a href="https://pungoyal.github.io/dotsync/start/quick-start/">Quick start</a> ·
+  <a href="https://github.com/pungoyal/dotsync/releases/latest">Download</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/pungoyal/dotsync/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pungoyal/dotsync/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/pungoyal/dotsync/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/pungoyal/dotsync?sort=semver"></a>
   <a href="https://pkg.go.dev/github.com/pungoyal/dotsync"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/pungoyal/dotsync.svg"></a>
@@ -54,7 +60,7 @@ Most dotfile managers are **deployment tools**: you edit a repo, then run a comm
 curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh
 ```
 
-The script downloads the right binary for your OS and CPU and **checks its SHA-256 checksum** before installing it to `~/.local/bin`. If the [GitHub CLI](https://cli.github.com) is installed, it also **verifies the build provenance attestation**. See [verifying releases](docs/verifying-releases.md).
+The script downloads the right binary for your OS and CPU and **checks its SHA-256 checksum** before installing it to `~/.local/bin`. If the [GitHub CLI](https://cli.github.com) is installed, it also **verifies the build provenance attestation**. See [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/).
 
 <details>
 <summary>Other ways to install</summary>
@@ -90,7 +96,7 @@ git clone https://github.com/pungoyal/dotsync && cd dotsync && make build   # �
 
 4. **That's it.** Edit files as you normally would; they sync every 5 minutes. Run `dotsync status` any time to see what's going on.
 
-Read [Getting started](docs/getting-started.md) for a guided tour.
+Follow the [quick start](https://pungoyal.github.io/dotsync/start/quick-start/) for a guided tour.
 
 ## How it works in 30 seconds
 
@@ -103,21 +109,18 @@ A private git repository holds a **manifest**: which files are managed, where th
 | changed | same | push the local version |
 | changed | changed | **conflict**: touch nothing, tell you |
 
-There are no git merges, rebases or clever heuristics. The full design is in [How it works](docs/how-it-works.md).
+There are no git merges, rebases or clever heuristics. The full design is in [How sync works](https://pungoyal.github.io/dotsync/concepts/how-sync-works/).
 
 ## Documentation
 
+**📖 [pungoyal.github.io/dotsync](https://pungoyal.github.io/dotsync/)**
+
 | | |
 |---|---|
-| [Getting started](docs/getting-started.md) | Install, first machine, second machine, day-to-day use |
-| [How it works](docs/how-it-works.md) | The sync model, guarantees, and failure handling |
-| [Manifest reference](docs/manifest.md) | Every manifest field and the per-machine config file |
-| [Command reference](docs/commands.md) | Every command and flag |
-| [Conflicts](docs/conflicts.md) | When they happen and how to resolve them |
-| [Secrets](docs/secrets.md) | What is blocked, and how to handle false positives |
-| [Background agent](docs/agent.md) | launchd, systemd and cron details; logs; notifications |
-| [Verifying releases](docs/verifying-releases.md) | Checksums, provenance attestations, SBOMs |
-| [FAQ & troubleshooting](docs/faq.md) | Common questions and fixes |
+| [Quick start](https://pungoyal.github.io/dotsync/start/quick-start/) | Two machines in sync in five minutes |
+| [Guides](https://pungoyal.github.io/dotsync/guides/manage-files/) | Managing files, conflicts, secrets, per-machine differences, migration |
+| [How sync works](https://pungoyal.github.io/dotsync/concepts/how-sync-works/) | The model and its [safety guarantees](https://pungoyal.github.io/dotsync/concepts/safety/) |
+| [Reference](https://pungoyal.github.io/dotsync/reference/commands/) | Commands, manifest, configuration, files, secret rules |
 
 ## Comparison
 

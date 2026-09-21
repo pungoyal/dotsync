@@ -46,7 +46,7 @@ HOME=/tmp/ds/b DOTSYNC_HOSTNAME=b ./bin/dotsync init --no-agent --no-install /tm
 | `internal/dotsync/commands.go` | the CLI |
 | `internal/dotsync/dotsync_test.go` | scenario tests: several simulated machines sharing a local bare repository |
 
-[docs/how-it-works.md](docs/how-it-works.md) explains the model. Read it before changing `plan.go` or `sync.go`.
+[How sync works](https://pungoyal.github.io/dotsync/concepts/how-sync-works/) explains the model. Read it before changing `plan.go` or `sync.go`.
 
 ## Tests
 
@@ -64,11 +64,31 @@ b.expect(".vimrc", "set number\n")
 
 Please add one for every behavior change and every bug fix.
 
+## Documentation
+
+The documentation site (https://pungoyal.github.io/dotsync/) is built with [Astro Starlight](https://starlight.astro.build) from `website/`, and deployed to GitHub Pages on every push to `main`. Pages are Markdown/MDX under `website/src/content/docs/`, organised by purpose:
+
+| Section | Kind of page | Write it as… |
+|---|---|---|
+| `start/` | tutorials | a guided path someone can follow top to bottom |
+| `guides/` | how-to guides | steps for one task, assuming the reader knows what they want |
+| `concepts/` | explanation | the why: models, trade-offs, guarantees |
+| `reference/` | reference | exhaustive, accurate and dry; mirrors the code |
+
+```sh
+cd website
+npm ci
+npm run dev      # http://localhost:4321/dotsync/
+npm run build    # also checks every internal link
+```
+
+Tools (Go, Node, linters, GoReleaser) are pinned in `mise.toml`: run `mise install`.
+
 ## Commits and pull requests
 
 - We use [Conventional Commits](https://www.conventionalcommits.org/): `feat: …`, `fix: …`, `docs: …`, `refactor: …`, `test: …`, `ci: …`, `chore: …`. Use `feat!:` or a `BREAKING CHANGE:` footer for breaking changes. Release notes and version numbers are generated from these messages, and PR titles are checked.
 - Keep PRs focused. CI (tests on macOS and Linux, lint, vulnerability scan) must pass.
-- Update the docs in `docs/` when behavior changes. Don't edit `CHANGELOG.md` by hand; it's generated.
+- Update the documentation site in `website/src/content/docs/` when behavior changes (see [Documentation](#documentation)). Don't edit `CHANGELOG.md` by hand; it's generated.
 
 ## Releases
 

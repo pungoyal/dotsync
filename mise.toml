@@ -1,0 +1,8 @@
+# Development tools for this repository: `mise install` sets everything up.
+[tools]
+go = "1.27"
+node = "26"
+golangci-lint = "2.13"
+actionlint = "1.7"
+goreleaser = "2.18"
+shellcheck = "0.11"

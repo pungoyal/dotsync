@@ -1,0 +1,55 @@
+---
+title: Restore a previous version
+description: Get back a file dotsync replaced or deleted, or any earlier synced version.
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+There are two places to look, depending on what you need.
+
+## Something dotsync replaced or deleted on this machine
+
+Before dotsync replaces or deletes a local file, it copies it to a backup directory named after the sync run. Paths inside mirror your home directory:
+
+<FileTree>
+- ~/.local/state/dotsync/backups/
+  - 20260921-111609-4242/
+    - .gitconfig
+    - .config/
+      - nvim/
+        - old.lua
+  - 20260922-083001-5120/
+    - .zshrc
+</FileTree>
+
+Find the version you want and copy it back:
+
+```sh
+ls -t ~/.local/state/dotsync/backups/                  # newest first
+cp ~/.local/state/dotsync/backups/20260921-111609-4242/.gitconfig ~/.gitconfig
+dotsync sync                                           # sends it to every machine
+```
+
+## Any earlier synced version
+
+Every change ever synced is in your repository's history, together with the machine that made it:
+
+```console frame="terminal"
+$ dotsync log
+51c7e02 2026-09-21 11:16 desktop: update 1 file(s)
+8b1d0e4 2026-09-21 10:58 laptop: manage nvim; update 2 file(s)
+```
+
+To pull an old version out, use any clone of the repository. The cache clone at `~/.local/share/dotsync/repo` works too, for reading only:
+
+```sh
+git -C ~/.local/share/dotsync/repo log --oneline -- files/gitconfig
+git -C ~/.local/share/dotsync/repo show 8b1d0e4:files/gitconfig > ~/.gitconfig
+dotsync sync
+```
+
+<Aside>
+Restoring is just an edit, so it syncs like any other change. If another machine changed the same file in the meantime, you get a [conflict](/dotsync/guides/resolve-conflicts/) rather than a silent overwrite.
+</Aside>
+
+Backups aren't pruned automatically. Delete old backup directories whenever you like.

@@ -1,0 +1,51 @@
+---
+title: Output and exit codes
+description: What each line of dotsync's output means, its status labels, and its exit codes.
+---
+
+## `sync` output
+
+Each file that needed action gets one line, followed by a summary:
+
+```console frame="terminal"
+$ dotsync sync
+  updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/20260921-111609-4242/.gitconfig)
+  sent      ~/.config/nvim/init.lua
+  CONFLICT  ~/.zshrc  (changed here and on another machine; see `dotsync diff ~/.zshrc`)
+dotsync: 1 updated, 1 sent, 1 conflict — pushed 51c7e02
+```
+
+| Label | Meaning |
+|---|---|
+| `updated` | a remote change was installed here; the previous version was backed up |
+| `removed` | deleted on another machine and removed here; backed up |
+| `sent` | a local change was pushed |
+| `deleted` | a local deletion was pushed |
+| `waiting` | a local change is ready but the remote is unreachable; it will be sent later |
+| `CONFLICT` | changed here and elsewhere; nothing was touched |
+| `BLOCKED` | a local change looks like a secret and wasn't sent |
+| `ERROR` | this file or entry couldn't be processed; everything else was |
+
+When the remote is unreachable, the summary ends with `remote unreachable (<git error>)`.
+
+## `status` states
+
+| State | Meaning |
+|---|---|
+| `ok` | in sync |
+| `N incoming` | remote changes waiting to be installed here |
+| `N outgoing` | local changes waiting to be sent |
+| `CONFLICT` | at least one file is in conflict |
+| `BLOCKED` | at least one file is held back as a possible secret |
+| `ERROR` | the entry or one of its files has a problem; the reason is shown below the row |
+| `skipped` | the entry is for another OS or excluded on this machine |
+
+`status` compares against the last fetched state unless you pass `--fetch`. Use `status --json` for scripts.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | success. Conflicts and blocked files are reported but aren't failures |
+| `1` | an error, or at least one file or entry could not be processed |
+| `2` | invalid usage (unknown command or flag, missing arguments) |

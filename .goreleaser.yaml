@@ -33,7 +33,6 @@ archives:
       - LICENSE
       - README.md
       - CHANGELOG.md
-      - docs/*
 
 checksum:
   name_template: checksums.txt
@@ -57,4 +56,4 @@ release:
     gh attestation verify dotsync_{{ .Version }}_<os>_<arch>.tar.gz --repo {{ .Env.GITHUB_REPOSITORY }}
     ```
 
-    See [verifying releases](https://github.com/{{ .Env.GITHUB_REPOSITORY }}/blob/main/docs/verifying-releases.md).
+    See [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/).

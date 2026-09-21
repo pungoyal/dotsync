@@ -1,0 +1,65 @@
+---
+title: Troubleshooting
+description: Fix common problems. Status shows offline, BLOCKED or ERROR; the agent isn't running; a file keeps coming back.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Start with `dotsync status -v`. It shows the last sync result, the agent state, and every file that needs attention, with the reason.
+
+## `last sync: … (offline: …)`
+
+dotsync couldn't reach the remote. The text after `offline:` is git's own error.
+
+| Error mentions | Fix |
+|---|---|
+| `Permission denied (publickey)`, `Authentication failed`, `could not read Username` | git needs credentials it can't prompt for. See [git access without prompts](/dotsync/guides/background-agent/#git-access-without-prompts) |
+| `Could not resolve host`, `Connection timed out` | you're offline. Local changes wait and are sent automatically later |
+| `Repository not found` | check the URL: `git -C ~/.local/share/dotsync/repo remote -v` |
+
+## `BLOCKED`
+
+The file now contains something that looks like a credential, so its new version isn't being sent. See [Keep secrets out](/dotsync/guides/secrets/).
+
+## `CONFLICT`
+
+The file changed on this machine and on another one. See [Resolve conflicts](/dotsync/guides/resolve-conflicts/).
+
+## `ERROR` on an entry
+
+| Message | Meaning and fix |
+|---|---|
+| `… uses $VAR, which is not set on this machine` | the entry's target uses an environment variable that isn't set here. Set it, or [exclude the entry](/dotsync/guides/differences/#skip-an-entry-on-one-machine) on this machine |
+| `… is not a plain directory (symlink or file); not syncing below it` | a directory inside a managed tree was replaced by a symlink or a file. dotsync refuses to follow it. Turn it back into a real directory, or `ignore` it |
+| `… is a dir, but the manifest says it is a file` / `… exists but is not a directory` | the local path changed type. Move it aside and run `dotsync sync` |
+| `… is larger than 10 MiB` | add the file to the entry's `ignore` list |
+| `manifest.json … is not valid JSON` | someone edited the manifest by hand. Fix it in any clone and push; nothing is changed until then |
+
+## Nothing syncs automatically
+
+```sh
+dotsync agent status
+```
+
+If it isn't installed or loaded, run `dotsync agent install`. Then check `~/.local/state/dotsync/agent.log` for errors, such as `git` not being found.
+
+## A file keeps "changing back"
+
+Some applications keep their settings in memory and write the whole file when they quit. dotsync then sees a local edit and syncs it back. Quit the application before making big changes on another machine, or look for an application setting that stores preferences separately from state.
+
+## Start over on one machine
+
+Your files are ordinary files, so resetting dotsync's local data is safe:
+
+```sh
+dotsync sync                                         # send any local edits first
+dotsync agent uninstall
+rm -rf ~/.local/share/dotsync ~/.local/state/dotsync  # also removes backups: copy out anything you need
+dotsync init --keep-existing <url>
+```
+
+With `--keep-existing`, any file that differs from the shared version becomes a conflict for you to review, instead of being replaced.
+
+<Aside>
+Still stuck? [Open an issue](https://github.com/pungoyal/dotsync/issues/new/choose) with the output of `dotsync version` and `dotsync status -v`, removing anything private first.
+</Aside>

@@ -16,7 +16,7 @@ Please include what you found, how to reproduce it, and the impact you expect. Y
 
 - anything that makes dotsync write, delete or replace files outside the managed targets, or outside `$HOME`
 - losing a local change without a backup, or resolving a conflict silently
-- secrets reaching the remote despite the [secret filters](docs/secrets.md) in a way the documentation says is prevented. Improvements to the patterns themselves are welcome as regular issues
+- secrets reaching the remote despite the [secret filters](https://pungoyal.github.io/dotsync/reference/secret-rules/) in a way the documentation says is prevented. Improvements to the patterns themselves are welcome as regular issues
 - command injection through manifest content, file names or configuration
 - problems in the release pipeline or the install script
 

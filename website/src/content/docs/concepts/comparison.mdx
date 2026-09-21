@@ -1,0 +1,37 @@
+---
+title: Comparison with other tools
+description: How dotsync compares with chezmoi, yadm, GNU Stow and Mackup, and when to choose each.
+---
+
+There are many good dotfile tools. They solve different problems, so here's an honest comparison.
+
+## At a glance
+
+| | dotsync | chezmoi | yadm | GNU Stow | Mackup |
+|---|---|---|---|---|---|
+| **Model** | two-way sync | source → apply | git work tree in `$HOME` | symlink farm | symlinks into a cloud folder |
+| Edit the real file | ✅ | via `chezmoi edit` / `re-add` | ✅ | ✅ (a symlink) | ✅ (a symlink) |
+| Syncs automatically | ✅ both ways | ❌ manual `apply` / `update` | ❌ manual git | ❌ | via the cloud client |
+| Per-file conflict detection | ✅ | ❌ (git merge) | ❌ (git merge) | ❌ | ❌ (cloud "conflicted copy") |
+| Backup before overwrite | ✅ always | on request | ❌ | ❌ | ❌ |
+| Keeps secrets out | ✅ blocks | encryption, password managers | encryption | ❌ | ❌ |
+| Templates per machine | ❌ | ✅ | ✅ (alternates, templates) | ❌ | ❌ |
+| Windows | ❌ | ✅ | ❌ | ❌ | ❌ |
+
+## When to choose which
+
+**Choose dotsync** if you want files to simply be the same on every Mac and Linux machine, edited anywhere and synced without ceremony, and you'd rather be told about a conflict than have one resolved for you.
+
+**Choose chezmoi** if machines need genuinely different renderings of the same file (templates, per-host data, secrets from password managers), if you use Windows, or if you prefer an explicit apply step.
+
+**Choose yadm** if you like working with git directly and want your home directory to *be* the repository.
+
+**Choose GNU Stow** if you want the smallest possible tool, you're happy running it by hand, and your applications don't replace symlinks.
+
+**Choose Mackup** if you mainly want to back up application settings to a cloud folder, especially macOS app preferences.
+
+## Using them together
+
+dotsync only touches the files in its manifest, so it coexists with other tools as long as they don't manage the **same** files. A common setup is dotsync for everyday config and chezmoi for a few heavily templated files.
+
+Moving over? See [Migrate from another tool](/dotsync/guides/migrate/).

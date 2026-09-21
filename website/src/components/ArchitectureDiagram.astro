@@ -1,0 +1,64 @@
+---
+/** Theme-aware diagram of the shared repository and what each machine keeps locally. */
+---
+
+<figure class="arch not-content">
+	<svg viewBox="0 0 720 390" role="img" aria-labelledby="arch-t arch-d">
+		<title id="arch-t">What is shared and what stays on each machine</title>
+		<desc id="arch-d">
+			A shared private git repository holds manifest.json and files. Each machine fetches from it and pushes one-sided local
+			changes to it. Each machine keeps its real files, a disposable cache clone, a state file with the base of every
+			managed file, backups, and its own configuration. None of these are synced.
+		</desc>
+		<defs>
+			<marker id="arch-a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path d="M1 1 9 5 1 9" class="arrow" />
+			</marker>
+		</defs>
+
+		<g class="repo">
+			<rect x="200" y="12" width="320" height="104" rx="14" />
+			<text x="360" y="42" class="h" text-anchor="middle">shared private git repository</text>
+			<text x="232" y="70" class="mono">manifest.json</text>
+			<text x="400" y="70" class="note">what is managed</text>
+			<text x="232" y="96" class="mono">files/…</text>
+			<text x="400" y="96" class="note">the content</text>
+		</g>
+
+		<g class="flow">
+			<path d="M300 180 V 126" marker-end="url(#arch-a)" />
+			<text x="290" y="158" class="label" text-anchor="end">push: one-sided local changes</text>
+			<path d="M420 126 V 180" marker-end="url(#arch-a)" />
+			<text x="430" y="158" class="label">fetch: every sync</text>
+		</g>
+
+		<g class="machine">
+			<rect x="20" y="190" width="680" height="188" rx="14" />
+			<text x="44" y="220" class="h" text-anchor="start">each machine</text>
+			<text x="676" y="220" class="note" text-anchor="end">nothing here is synced</text>
+			<g class="rows">
+				<text x="44" y="256" class="k">your real files</text><text x="230" y="256" class="mono">~/.gitconfig, ~/.config/nvim/…</text>
+				<text x="44" y="284" class="k">cache clone</text><text x="230" y="284" class="mono">~/.local/share/dotsync/repo</text><text x="560" y="284" class="note">reset every sync</text>
+				<text x="44" y="312" class="k">state</text><text x="230" y="312" class="mono">~/.local/state/dotsync/state.json</text><text x="560" y="312" class="note">the base of every file</text>
+				<text x="44" y="340" class="k">backups</text><text x="230" y="340" class="mono">~/.local/state/dotsync/backups/</text>
+				<text x="44" y="368" class="k">machine config</text><text x="230" y="368" class="mono">~/.config/dotsync/config.json</text>
+			</g>
+		</g>
+	</svg>
+</figure>
+
+<style>
+	.arch { margin-block: 1.5rem; }
+	svg { width: 100%; height: auto; display: block; font-family: var(--sl-font); }
+	rect { stroke-width: 1.5; }
+	.repo rect { fill: color-mix(in srgb, var(--sl-color-accent) 12%, transparent); stroke: var(--sl-color-accent); }
+	.machine rect { fill: color-mix(in srgb, var(--sl-color-gray-6) 60%, transparent); stroke: var(--sl-color-gray-5); }
+	.h { font-size: 15px; font-weight: 700; fill: var(--sl-color-white); }
+	.mono { font-family: var(--sl-font-mono); font-size: 13px; fill: var(--sl-color-gray-1); }
+	.note { font-size: 12.5px; fill: var(--sl-color-gray-3); }
+	.k { font-size: 13.5px; font-weight: 600; fill: var(--sl-color-gray-2); }
+	.label { font-size: 12.5px; fill: var(--sl-color-gray-2); }
+	.flow path { stroke: var(--sl-color-accent); stroke-width: 2; fill: none; stroke-dasharray: 5 5; }
+	.arrow { stroke: var(--sl-color-accent); stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+	@media (max-width: 40rem) { .note { display: none; } }
+</style>

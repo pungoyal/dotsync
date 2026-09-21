@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <style>.d{fill:#0f1520}@media (prefers-color-scheme:dark){.d{fill:#e8edf2}}</style>
+  <path d="M26 16a10 10 0 0 1-17.3 6.8" stroke="#0f766e" stroke-width="3" stroke-linecap="round"/>
+  <path d="M6 16A10 10 0 0 1 23.3 9.2" stroke="#14b8a6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M23.8 4.6v5.1h-5.1" stroke="#14b8a6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8.2 27.4v-5.1h5.1" stroke="#0f766e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle class="d" cx="16" cy="16" r="3.4"/>
+</svg>

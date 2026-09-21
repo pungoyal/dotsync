@@ -1,0 +1,135 @@
+---
+title: Quick start
+description: Sync your dotfiles between two machines in five minutes.
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+In this tutorial you'll set up dotsync on two machines, share a few dotfiles between them, and see a change flow from one to the other. It takes about five minutes.
+
+**You'll need** two macOS or Linux machines with [dotsync installed](/dotsync/start/installation/), plus a GitHub (or GitLab, Gitea…) account.
+
+## 1. Create a private repository
+
+<Steps>
+
+1. Create a new, **empty, private** repository, for example `dotfiles`. Don't add a README or license; dotsync initializes it.
+
+   <Aside type="caution">
+   Keep it **private**. dotsync blocks common secrets, but configuration files still reveal things like hostnames, email addresses and internal URLs.
+   </Aside>
+
+2. Make sure `git` can reach it **without asking for a password**. The background agent has nobody to type one:
+
+   ```sh
+   git ls-remote git@github.com:you/dotfiles.git
+   ```
+
+   If that prompts you, see [git access for the agent](/dotsync/guides/background-agent/#git-access-without-prompts).
+
+</Steps>
+
+## 2. Set up your first machine
+
+<Steps>
+
+1. Point dotsync at the repository:
+
+   ```console frame="terminal"
+   $ dotsync init git@github.com:you/dotfiles.git
+   cloning git@github.com:you/dotfiles.git ...
+   remote is empty; creating the manifest
+   installed ~/.local/bin/dotsync
+   dotsync: in sync (0 files)
+   automatic sync: launchd agent io.github.dotsync, every 300s
+   ```
+
+   `init` created the manifest, ran a first sync and installed a background agent that syncs every five minutes.
+
+2. Choose what to manage. Start with a couple of files and one directory:
+
+   ```console frame="terminal"
+   $ dotsync add ~/.gitconfig -d "Git identity and aliases"
+   managing ~/.gitconfig as 'gitconfig'
+     sent      ~/.gitconfig
+   dotsync: 1 sent — pushed 3f2a9c1
+
+   $ dotsync add ~/.config/nvim -d "Neovim"
+   managing ~/.config/nvim as 'nvim'
+     sent      ~/.config/nvim/init.lua
+     sent      ~/.config/nvim/lua/plugins.lua
+   dotsync: 2 sent — pushed 8b1d0e4
+   ```
+
+3. Look at what's managed:
+
+   ```sh
+   dotsync status
+   ```
+
+</Steps>
+
+## 3. Set up your second machine
+
+<Steps>
+
+1. Run the same `init`:
+
+   ```console frame="terminal"
+   $ dotsync init git@github.com:you/dotfiles.git
+   cloning git@github.com:you/dotfiles.git ...
+     updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/20260921-101500-4242/.gitconfig)
+     updated   ~/.config/nvim/init.lua
+     updated   ~/.config/nvim/lua/plugins.lua
+   dotsync: 3 updated
+   ```
+
+   Your files are here. This machine already had a `.gitconfig`, so dotsync **backed it up** before replacing it.
+
+   <Aside type="tip">
+   Prefer to review differences before anything is replaced? Run `dotsync init --keep-existing` instead. Differing files then show up as [conflicts](/dotsync/guides/resolve-conflicts/) for you to settle one by one.
+   </Aside>
+
+</Steps>
+
+## 4. Watch a change sync
+
+<Steps>
+
+1. On the **second** machine, edit a managed file:
+
+   ```sh
+   git config --global alias.st status     # edits ~/.gitconfig
+   ```
+
+2. Sync it now instead of waiting for the agent:
+
+   ```console frame="terminal"
+   $ dotsync sync
+     sent      ~/.gitconfig
+   dotsync: 1 sent — pushed 51c7e02
+   ```
+
+3. On the **first** machine, pull it in the same way, or wait up to five minutes and it arrives on its own:
+
+   ```console frame="terminal"
+   $ dotsync sync
+     updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/…)
+   dotsync: 1 updated
+   ```
+
+</Steps>
+
+That's the whole workflow. **From now on, just edit your files.**
+
+## What you've learned
+
+- `dotsync init <url>` connects a machine and starts the background agent.
+- `dotsync add <path>` manages a file or directory on **every** machine.
+- Changes sync automatically in both directions, and every replaced file is backed up first.
+
+## Where to next
+
+- [Manage files and directories](/dotsync/guides/manage-files/): ignore patterns, descriptions, stopping management.
+- [Resolve conflicts](/dotsync/guides/resolve-conflicts/): what happens when two machines edit the same file.
+- [How sync works](/dotsync/concepts/how-sync-works/): the model behind all of this.
