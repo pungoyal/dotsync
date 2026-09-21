@@ -1,24 +1,38 @@
 ---
 title: Environment variables
-description: Environment variables that affect dotsync and its install script.
+description: The environment variables dotsync reads, the ones it sets for git, and the ones the install script reads.
 ---
 
-## dotsync
+## Read by dotsync
 
 | Variable | Effect |
 |---|---|
-| `HOME` | the home directory. Targets must resolve inside it |
-| `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` | where dotsync keeps its [own files](/dotsync/reference/files/). Also usable in [targets](/dotsync/reference/manifest/#targets), along with `XDG_CACHE_HOME` |
-| `DOTSYNC_HOSTNAME` | machine name in commit messages (default: the short hostname) |
-| `DOTSYNC_NO_NOTIFY` | set to any value to disable desktop notifications |
-| `GIT_SSH_COMMAND` | used as-is if set; otherwise dotsync runs `ssh -o BatchMode=yes -o ConnectTimeout=15` so it never prompts |
+| `HOME` | the home directory. Every target must resolve inside it |
+| `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` | where dotsync keeps its [own files](/dotsync/reference/files/), when set to an absolute path. `XDG_CONFIG_HOME` also locates the systemd user units |
+| `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, and any other variable | usable at the start of a [target](/dotsync/reference/manifest/#targets), as `$VAR/…` or `${VAR}/…` |
+| `DOTSYNC_HOSTNAME` | the machine's name in commit messages, commit authors and `status`. Default: the hostname, up to the first dot |
+| `DOTSYNC_NO_NOTIFY` | any value turns off desktop notifications. The background agent's environment doesn't include it; see [notifications](/dotsync/guides/background-agent/#logs-and-notifications) |
+| `GIT_SSH_COMMAND` | used as it is, if set. Otherwise dotsync runs ssh as `ssh -o BatchMode=yes -o ConnectTimeout=15`, so it never prompts |
+| `GITHUB_TOKEN` | sent to the GitHub API by `update` and `doctor` when they look up the latest release, to avoid its rate limit |
+| `PATH` | where dotsync finds `git`, `gh`, `launchctl`, `systemctl`, `crontab`, and the notification programs. `agent install` writes it into the agent's definition |
 
-dotsync always runs git with `GIT_TERMINAL_PROMPT=0` and `LC_ALL=C`.
+The background agent doesn't read your shell's configuration. It gets `PATH`, `HOME` and any `XDG_*` base directories as they were when you last ran `dotsync agent install` (or `init`, or `update`); see [the job's environment](/dotsync/guides/background-agent/#the-jobs-environment).
 
-## Install script
+## Set by dotsync for git
+
+dotsync runs every git command with:
+
+| Variable | Why |
+|---|---|
+| `GIT_TERMINAL_PROMPT=0` | fail instead of asking for a username or password |
+| `GIT_SSH_COMMAND` | `ssh -o BatchMode=yes -o ConnectTimeout=15`, unless you set it yourself |
+| `LC_ALL=C` | English messages that dotsync can recognize and explain |
+| `GIT_OPTIONAL_LOCKS=0` | no background lock or index writes from read-only commands |
+
+## Read by the install script
 
 | Variable | Default | Effect |
 |---|---|---|
-| `DOTSYNC_VERSION` | latest | release tag to install, e.g. `v0.1.0` |
-| `DOTSYNC_BIN_DIR` | `~/.local/bin` | install directory |
-| `DOTSYNC_REQUIRE_ATTESTATION` | `0` | `1` fails the install unless the build provenance verifies (needs the GitHub CLI) |
+| `DOTSYNC_VERSION` | latest | release to install, e.g. `v0.5.0` |
+| `DOTSYNC_BIN_DIR` | `~/.local/bin` | where to install |
+| `DOTSYNC_REQUIRE_ATTESTATION` | `0` | `1` refuses to install unless the build provenance verifies, which needs the GitHub CLI |

@@ -42,6 +42,11 @@ SOURCE            TARGET                      STATUS    DESCRIPTION
 fish/config.fish  ~/.config/fish/config.fish  ok        Fish shell configuration
 gitconfig         ~/.gitconfig                CONFLICT  Git identity and aliases
 nvim              ~/.config/nvim/             ok        Neovim
+
+conflicts (neither version has been changed):
+  ~/.gitconfig  since 2026-09-21T11:16:09+05:30
+  inspect: dotsync diff <path>    settle: dotsync resolve <path> --keep local|remote
+  (to merge by hand, edit the local file, then --keep local)
 ```
 
 That's the whole workflow. From then on a background agent keeps every machine in sync. You only hear from dotsync when two machines changed the same file and it needs you to pick a version.
@@ -55,7 +60,7 @@ Most dotfile managers are **deployment tools**: you edit a repo, then run a comm
 - **Secrets stay home.** SSH keys, cloud credentials, tokens in shell rc files and similar things are refused before they reach the remote.
 - **Offline-tolerant.** Machines that were away for a month catch up correctly when they reconnect.
 - **Few moving parts.** One static binary plus `git`, and a private git repo you already know how to host. No daemon, database, server or account.
-- **Light on your battery.** A sync with nothing to do takes about 65 ms and writes nothing to disk. There's no randomized scheduling and no surprise background work.
+- **Light on your battery.** A sync with nothing to do runs two git processes and writes nothing but a timestamp. There's no randomized scheduling and no surprise background work.
 - **Portable.** Targets are written as `~/…` or `$XDG_CONFIG_HOME/…`. Per-OS entries and per-machine exclusions keep machine-specific settings out of the shared config.
 
 ## Install
@@ -130,12 +135,11 @@ There are no git merges, rebases or clever heuristics. The full design is in [Ho
 
 | | dotsync | chezmoi | yadm | GNU Stow | Mackup |
 |---|---|---|---|---|---|
-| Edit real files in place | ✅ | via `chezmoi edit`/`re-add` | ✅ | ✅ (symlinks) | ✅ (symlinks) |
-| Syncs automatically, both ways | ✅ | ❌ (manual apply) | ❌ (manual git) | ❌ | via cloud folder |
-| Manage files from any machine | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Conflict detection per file | ✅ | ❌ (git merge) | ❌ (git merge) | ❌ | ❌ |
-| Blocks secrets from syncing | ✅ | encryption / password managers | encryption | ❌ | ❌ |
-| Templates per machine | ❌ | ✅ | ✅ (alternates) | ❌ | ❌ |
+| You edit | the real file | the source, or the file then `chezmoi re-add` | the real file | the real file, through its symlink | the real file |
+| Other machines get changes | automatically | when you run `chezmoi update` | when you run `yadm pull` | when you pull the directory | when you run `mackup restore` |
+| Same file changed on two machines | per-file conflict: both kept, you choose | git merge conflict in the source; asks before overwriting a file changed since the last apply | git merge conflict | git merge conflict, if the directory is a git repository | whatever the storage provider does |
+| Secrets | held back before upload | templates that read password managers; encryption | encryption | not handled | not handled |
+| Differences per machine | per-OS entries, per-machine exclusions | templates | alternate files, templates | separate packages | not handled |
 
 dotsync deliberately does **not** do templating. If you need one file to differ per machine in complicated ways, chezmoi is excellent. dotsync is for people who want their files to simply be the same everywhere, with no ceremony.
 

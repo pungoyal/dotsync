@@ -1,28 +1,39 @@
 ---
 title: Machine configuration
-description: The per-machine config file, which is never synced.
+description: The per-machine config.json, which is never synced. Every field, its default, and how to change it.
 ---
 
-`~/.config/dotsync/config.json` holds settings for **one machine**. It is never synced. `dotsync init` creates it.
+import ref from '../../../data/reference.json';
 
-```json title="~/.config/dotsync/config.json"
+`~/.config/dotsync/config.json` holds the settings for **one machine**. It's never synced. `dotsync init` creates it, and `init`, `exclude` and `include` change it; you can also edit it by hand. It's under `$XDG_CONFIG_HOME` if you've set that.
+
+```json title="~/.config/dotsync/config.json, as init writes it"
 {
   "remote": "git@github.com:you/dotfiles.git",
   "branch": "main",
   "interval": 300,
+  "exclude": []
+}
+```
+
+```json title="with every field"
+{
+  "remote": "git@github.com:you/dotfiles.git",
+  "branch": "main",
+  "interval": 600,
   "exclude": ["karabiner/karabiner.json"],
-  "on_existing": "remote",
-  "backup_retention_days": 90
+  "on_existing": "conflict",
+  "backup_retention_days": 30
 }
 ```
 
 | Field | Default | Description |
 |---|---|---|
-| `remote` | | URL of the shared repository |
-| `branch` | `main` | branch to sync |
-| `interval` | `300` | seconds between background syncs. Run `dotsync agent install` after changing it |
-| `exclude` | `[]` | manifest `source`s this machine doesn't manage. Their local files are left alone. Edit with `dotsync exclude` / `include` |
-| `backup_retention_days` | `90` | backups older than this are deleted (checked once a day), **except the most recent backup of each file**, which is always kept. `0` keeps everything |
-| `on_existing` | `"remote"` | what happens when an entry is synced here for the first time and a **different** local file already exists: `"remote"` backs it up and installs the shared version; `"conflict"` leaves it untouched and reports a conflict. `init --keep-existing` sets `"conflict"` |
+| `remote` | | URL of the shared repository, as you'd pass it to `git clone` |
+| `branch` | `main` | branch to sync. Set with `init --branch` |
+| `interval` | `{ref.defaults.interval}` | seconds between background syncs. Set with `init --interval`; after editing it by hand, run `dotsync agent install` |
+| `exclude` | `[]` | sources of manifest entries this machine doesn't manage. Their local files are left alone. Change with [`dotsync exclude` and `include`](/dotsync/guides/differences/#skip-an-entry-on-one-machine) |
+| `on_existing` | `"remote"` | what happens the first time an entry syncs here and a **different** local file already exists. `"remote"` backs it up and installs the shared version; `"conflict"` leaves it untouched and reports a conflict. `init --keep-existing` sets `"conflict"`; to go back, remove the field |
+| `backup_retention_days` | `{ref.defaults.backup_retention_days}` | backups older than this many days are deleted, once a day, **except the most recent backup of each file**, which is always kept. `0` keeps everything |
 
-The file is located through `$XDG_CONFIG_HOME` if that's set.
+The file is only readable by you (mode `0600`). If it isn't valid JSON, every command stops with an error naming the file.

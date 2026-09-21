@@ -84,6 +84,32 @@ npm run build    # also checks every internal link
 
 Tools (Go, Node, linters, GoReleaser) are pinned in `mise.toml`: run `mise install`.
 
+### Generated reference
+
+The command usage lines and flag tables, the secret rules, the always-ignored patterns and the defaults on the site come from `website/src/data/reference.json`, which a test generates from the code. After changing a command, flag, secret rule or default, regenerate it:
+
+```sh
+make reference   # go test ./internal/dotsync -run TestWebsiteReference -update-reference
+```
+
+`go test` fails while the file is out of date, and the site's build fails if a secret rule has no explanation in `website/src/components/SecretRules.astro`.
+
+### Terminal output
+
+Show dotsync's output with the `Terminal` component, copying what dotsync actually prints: run the commands, don't write the output from memory. Define the transcript with `export const` at the top of the page (MDX strips leading spaces inside component attributes), and start command lines with `$ `:
+
+```mdx
+import Terminal from '../../../components/Terminal.astro';
+
+export const out = `
+$ dotsync sync
+  sent      ~/.gitconfig
+dotsync: 1 sent — pushed 51c7e02
+`;
+
+<Terminal title="laptop" code={out} />
+```
+
 ## Brand assets
 
 The icon and mark are generated. Edit `assets/brand/generate_icon.py` (geometry and colours), then run:

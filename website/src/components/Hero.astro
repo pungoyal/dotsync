@@ -1,0 +1,261 @@
+---
+/**
+ * The home page hero (Starlight's Hero override). Other pages don't have a hero.
+ * The two terminals are a real sequence: an edit sent from one machine, and the same setting
+ * present on another machine after its background agent's next sync.
+ */
+import { Icon } from '@astrojs/starlight/components';
+import Terminal from './Terminal.astro';
+import { withBase } from '../lib/links';
+
+const PAGE_TITLE_ID = '_top'; // Starlight's id for the page title (its skip link and table of contents point at it)
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline } = data.hero || {};
+const install = 'curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh';
+---
+
+<div class="hero">
+	<div class="copy">
+		<span class="ds-eyebrow">Dotfile sync for macOS and Linux</span>
+		<h1 id={PAGE_TITLE_ID} data-page-title set:html={title} />
+		{tagline && <p class="tagline" set:html={tagline} />}
+		<div class="actions">
+			<a class="btn primary" href={withBase('/start/quick-start/')}>
+				Get started <Icon name="right-arrow" size="1.1rem" />
+			</a>
+			<a class="btn secondary" href={withBase('/concepts/how-sync-works/')}>How it works</a>
+			<a class="btn minimal" href="https://github.com/pungoyal/dotsync">
+				<Icon name="github" size="1.1rem" /> GitHub
+			</a>
+		</div>
+		<div class="install">
+			<span class="label">Install</span>
+			<div class="line">
+				<code>{install}</code>
+				<button type="button" class="copy-btn" data-copy={install} aria-label="Copy the install command" hidden>
+					<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path></svg>
+				</button>
+			</div>
+			<p class="note">
+				Verifies the checksum and signed build provenance. <a href={withBase('/start/installation/')}
+					>Other ways to install</a
+				>
+			</p>
+		</div>
+	</div>
+	<div class="demo" role="group" aria-label="An edit on one machine arriving on another">
+		<Terminal
+			title="laptop"
+			code={`
+$ git config --global alias.st status
+$ dotsync sync
+  sent      ~/.gitconfig
+dotsync: 1 sent — pushed 51c7e02
+`}
+		/>
+		<p class="between">
+			<span aria-hidden="true"></span>on its next scheduled sync, the desktop installs it<span aria-hidden="true"></span>
+		</p>
+		<Terminal
+			title="desktop"
+			code={`
+$ git config --global alias.st
+status
+`}
+		/>
+	</div>
+</div>
+
+<script>
+	for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+		if (!navigator.clipboard) continue;
+		btn.hidden = false;
+		btn.addEventListener('click', async () => {
+			await navigator.clipboard.writeText(btn.dataset.copy!);
+			btn.dataset.copied = '';
+			btn.setAttribute('aria-label', 'Copied');
+			setTimeout(() => {
+				delete btn.dataset.copied;
+				btn.setAttribute('aria-label', 'Copy the install command');
+			}, 1600);
+		});
+	}
+</script>
+
+<style>
+	.hero {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 2.5rem;
+		align-items: center;
+		padding-block: 2.5rem 1rem;
+	}
+	@media (min-width: 62rem) {
+		.hero {
+			grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+			gap: 3.5rem;
+			padding-block: 4.5rem 2rem;
+		}
+	}
+	h1 {
+		margin: 0.75rem 0 0;
+		font-size: clamp(2.5rem, 1.6rem + 3.4vw, 4rem);
+		font-weight: 760;
+		line-height: 1.02;
+		letter-spacing: -0.045em;
+		color: var(--sl-color-white);
+		text-wrap: balance;
+	}
+	.tagline {
+		margin: 1.25rem 0 0;
+		max-width: 34rem;
+		font-size: clamp(1.05rem, 1rem + 0.35vw, 1.2rem);
+		line-height: 1.6;
+		color: var(--sl-color-gray-2);
+		text-wrap: pretty;
+	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-top: 2rem;
+	}
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		min-height: 2.75rem;
+		padding: 0 1.2rem;
+		border-radius: 999px;
+		font-weight: 600;
+		font-size: 0.95rem;
+		text-decoration: none;
+		transition: background-color 150ms, border-color 150ms, color 150ms, transform 150ms;
+	}
+	.primary {
+		background: var(--sl-color-accent);
+		color: var(--sl-color-black);
+	}
+	.primary:hover {
+		background: var(--sl-color-accent-high);
+	}
+	:root[data-theme='light'] .primary {
+		color: #ffffff;
+	}
+	.secondary {
+		border: 1px solid var(--ds-border-strong);
+		color: var(--sl-color-white);
+	}
+	.secondary:hover {
+		border-color: var(--sl-color-accent);
+	}
+	.minimal {
+		color: var(--sl-color-gray-2);
+		padding-inline: 0.6rem;
+	}
+	.minimal:hover {
+		color: var(--sl-color-white);
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.primary:hover {
+			transform: translateY(-1px);
+		}
+	}
+
+	.install {
+		margin-top: 2.25rem;
+		max-width: 36rem;
+	}
+	.label {
+		display: block;
+		margin-bottom: 0.4rem;
+		font-size: var(--sl-text-2xs);
+		font-weight: 650;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-3);
+	}
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.55rem 0.55rem 0.55rem 0.9rem;
+		border: 1px solid var(--ds-border);
+		border-radius: var(--ds-radius-sm);
+		background: var(--ds-surface);
+	}
+	.line code {
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		white-space: nowrap;
+		font-family: var(--sl-font-mono);
+		font-size: 0.8rem;
+		color: var(--sl-color-white);
+		scrollbar-width: thin;
+	}
+	.line code::before {
+		content: '$ ' / '';
+		color: var(--sl-color-accent);
+	}
+	.copy-btn {
+		display: inline-grid;
+		place-items: center;
+		flex: none;
+		min-width: 2rem;
+		min-height: 2rem;
+		border: 1px solid var(--ds-border);
+		border-radius: 0.4rem;
+		background: transparent;
+		color: var(--sl-color-gray-2);
+		cursor: pointer;
+	}
+	.copy-btn:hover {
+		color: var(--sl-color-white);
+		border-color: var(--sl-color-accent);
+	}
+	.copy-btn[data-copied] {
+		color: var(--sl-color-accent);
+		border-color: var(--sl-color-accent);
+	}
+	.copy-btn[hidden] {
+		display: none;
+	}
+	.note {
+		margin: 0.5rem 0 0;
+		font-size: 0.82rem;
+		color: var(--sl-color-gray-3);
+	}
+	.note a {
+		color: var(--sl-color-text-accent);
+	}
+
+	.copy,
+	.demo {
+		min-width: 0;
+	}
+	.demo :global(.ds-term) {
+		margin: 0;
+	}
+	.between {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin: 0.9rem 0.25rem;
+		font-size: 0.8rem;
+		color: var(--sl-color-gray-3);
+		white-space: nowrap;
+	}
+	.between span {
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(to right, transparent, var(--sl-color-accent), transparent);
+	}
+	@media (max-width: 30rem) {
+		.between {
+			white-space: normal;
+			text-align: center;
+		}
+	}
+</style>

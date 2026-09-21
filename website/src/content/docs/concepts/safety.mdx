@@ -1,58 +1,60 @@
 ---
 title: Safety guarantees
-description: What dotsync promises about your files, and the mechanisms that keep those promises.
+description: The promises dotsync makes about your files, and the mechanism behind each one.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-dotsync changes files in your home directory without asking, so it has to be trustworthy. These are the promises it makes, and how each one is kept.
+dotsync changes files in your home directory without asking, so it has to be trustworthy. These are the promises it makes, and how it keeps each one.
 
-## Nothing local is overwritten without a copy
+## Nothing is replaced without a copy
 
-Every local file dotsync **replaces or deletes** is first copied to `~/.local/state/dotsync/backups/<run>/<path>`. Backups are never overwritten, not even by a retried sync. If the backup fails, the file is left alone.
+Every local file dotsync **replaces or deletes** is first copied to `~/.local/state/dotsync/backups/<run>/<path>`. If the copy fails, the file is left alone. A backup is never overwritten, not even by a retried sync: a second copy of the same file in the same run gets a numbered suffix. See [Restore a previous version](/dotsync/guides/restore/).
 
 ## Concurrent edits are never merged or discarded
 
-If the same file changed on two machines, it becomes a **conflict**. Both versions stay exactly as they are until you [resolve it](/dotsync/guides/resolve-conflicts/). dotsync never picks a winner and never tries a textual merge.
+If a file changed on two machines, it becomes a **conflict**. Both versions stay exactly as they are until you [resolve it](/dotsync/guides/resolve-conflicts/). dotsync never picks a winner, and never attempts a textual merge.
 
-## Changes made during a sync are never clobbered
+## A change always beats a deletion
 
-dotsync decides based on what it read, then re-reads each file immediately before replacing or deleting it. If you saved the file in between, that file is skipped and handled on the next sync. Files that change *while being read* are detected too.
+If one machine deletes a file that another changed, the changed version survives everywhere. And a missing single-file entry, or a managed directory that's missing or empty, is restored rather than deleted everywhere, so an accidental `rm -rf` or an unmounted disk can't wipe your configuration on every machine.
+
+## Edits made during a sync are never clobbered
+
+dotsync decides based on what it read, then reads each file again immediately before replacing or deleting it. If you saved the file in between, that file is skipped and handled on the next sync. A file that changes *while* it's being read is detected too.
 
 ## Only managed paths are touched
 
-- Targets must be inside `$HOME`. Absolute paths in the manifest are rejected.
-- Inside managed directories, dotsync never reads or writes **through** a symlinked or replaced parent directory, so it can't be tricked into writing outside the managed tree.
-- Files outside managed entries are never read or written.
-- When an entry is removed from the manifest, its local files are left in place, not deleted.
+- Targets must resolve inside `$HOME`, and outside dotsync's own directories. Absolute paths in the manifest are rejected.
+- Inside a managed directory, dotsync never reads or writes **through** a parent directory that has been replaced by a symlink, so it can't be tricked into writing outside the managed tree.
+- Apart from dotsync's own files, the background agent's definition and git's configuration, nothing outside managed entries is read or written.
+- When an entry stops being managed, whether removed from the manifest, excluded on a machine or skipped for another OS, its files are left in place, never deleted.
 
 ## Writes are atomic
 
-Files are written to a temporary file in the same directory, flushed to disk, then renamed into place. Applications never see a half-written file. (Entries can opt into `"write": "inplace"` for applications that need the same inode kept. That write is still flushed to disk before dotsync moves on.)
+A file is written to a temporary file in the same directory, flushed to disk, and renamed into place, so programs never see a half-written file. An entry can opt into [`"write": "inplace"`](/dotsync/reference/manifest/#write) for programs that need the same inode kept; that write is still flushed to disk before dotsync moves on.
 
-## A crash can't corrupt anything
+## A crash can't leave a mess
 
-- The cache clone is marked dirty *before* dotsync modifies it and reset before it's used again, so an interrupted sync leaves nothing behind.
-- The base only moves after a successful local write or a successful push.
-- State is written atomically. If it's ever unreadable anyway, it's set aside, and every file that differs from the remote becomes a **conflict** rather than being replaced.
+- The cache clone is marked dirty *before* dotsync changes it, and reset before it's used again, so an interrupted sync leaves nothing behind.
+- A file's base only moves after a successful local write or a successful push.
+- The state file is written atomically. If it's ever unreadable anyway, it's set aside, and every file that differs from the repository becomes a **conflict** rather than being replaced.
 
-If a sync is killed at any point, the next one simply finishes the job.
+If a sync is killed at any point, the next one finishes the job.
 
-## Convergence is deterministic
+## Every machine converges
 
-The repository has a single, linear history, and every machine applies the same rules to the same manifest. Machines that have synced hold identical managed files. The only exceptions are ones dotsync reports explicitly: conflicts, blocked secrets, per-OS entries and per-machine exclusions.
+The repository has a single, linear history: dotsync never merges or rebases, and a machine that loses a push race redoes its work on top of the winner's commit. Every machine applies the same rules to the same manifest, so machines that have synced hold identical managed files. The only differences are the ones dotsync reports: conflicts, blocked files, per-OS entries and per-machine exclusions.
 
 ## Everything is recoverable
 
-- Every synced version of every file is in the repository history, along with the machine that made it.
-- Every local replacement has a backup.
+- Every synced version of every file is in the repository's history, with the machine that made it.
+- Every local replacement or deletion has a backup, and the most recent backup of each file is kept however old it is.
 
-See [Restore a previous version](/dotsync/guides/restore/).
+## How this is tested
 
-## How this is verified
-
-These properties are covered by scenario tests that simulate several machines, each with its own home directory, sharing one repository. The tests cover concurrent edits, offline machines, push races, crashes mid-sync, symlink tricks and corrupted state. They run on macOS and Linux for every change.
+Scenario tests simulate several machines, each with its own home directory, sharing one repository. They cover concurrent edits, offline machines, push races, symlink tricks, lost state, emptied directories, existing files on new machines, backups, secrets and encrypted files. They run on macOS and on Linux for every change, alongside fuzz tests for path and pattern handling.
 
 <Aside type="caution" title="What dotsync can't protect against">
-Anyone with **write access to your dotfiles repository** controls what your machines receive, just as with any dotfiles setup. Keep the repository private, and protect the account that owns it. See the [security model](/dotsync/concepts/security-model/).
+Anyone with **write access to your dotfiles repository** controls what your machines receive, as with any dotfiles setup. Keep the repository private, and protect the account that owns it. See the [security model](/dotsync/concepts/security-model/).
 </Aside>

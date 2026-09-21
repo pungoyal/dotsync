@@ -1,50 +1,78 @@
 ---
 title: FAQ
-description: Answers to common questions about dotsync.
+description: Answers to common questions about dotsync, from platforms and timing to repositories, permissions and pausing sync.
 ---
+
+## Platforms and setup
 
 ### Does dotsync work on Windows?
 
-No. It supports macOS and Linux on amd64 and arm64. It runs fine under WSL, as Linux.
-
-### How quickly do changes propagate?
-
-Within the agent's interval, five minutes by default, on each machine. Run `dotsync sync` for an immediate sync.
-
-### Can I use a repository I already have?
-
-Use a **new, empty** repository. dotsync's layout (`manifest.json` + `files/`) differs from a typical dotfiles repository. See [Migrate from another tool](/dotsync/guides/migrate/).
+No. It supports macOS and Linux, on amd64 and arm64. WSL isn't tested, but it is Linux, so the Linux build should work there; the background agent needs systemd or cron running in the distribution.
 
 ### Does it need GitHub?
 
-No. Any git remote works: GitLab, Gitea, Bitbucket, a bare repository over SSH, even a path on a mounted drive.
+No. Any git remote you can push to works: GitLab, Gitea, Forgejo, Bitbucket, a bare repository on your own server over SSH, even a path on a mounted drive. GitHub is only used by `dotsync update` and `doctor`, to find new releases.
+
+### Can I use a repository I already have?
+
+Use a **new, empty** repository. dotsync's layout, `manifest.json` plus `files/`, is its own, and `init` only sets up an empty repository. See [Migrate from another tool](/dotsync/guides/migrate/).
+
+### Can it manage files outside my home directory, like `/etc/hosts`?
+
+No. Every target must be inside your home directory, and dotsync runs as you, never as root.
+
+## Syncing
+
+### How quickly do changes reach the other machines?
+
+The machine that made the change sends it on its next sync, and every other machine installs it on its own next sync. With the default five-minute interval, that's usually within ten minutes while both machines are awake. Run `dotsync sync` on both ends to make it immediate.
 
 ### What happens if two machines sync at the same moment?
 
-One push wins; the other is rejected and redone on top of it. If both changed the same file, that file becomes a [conflict](/dotsync/guides/resolve-conflicts/). Nothing is lost.
+One push wins. The other is rejected, and that machine redoes its sync on top of the winning commit. If both changed the same file, that file becomes a [conflict](/dotsync/guides/resolve-conflicts/). Nothing is lost.
+
+### What if I'm editing a file while a sync runs?
+
+dotsync reads each file again right before replacing it. If your save landed in between, it leaves the file alone and picks it up on the next sync. Files are replaced atomically, so your editor never reads a half-written one.
+
+### Are permissions synced?
+
+The executable bit is, and an entry's [`mode`](/dotsync/reference/manifest/#mode), if it has one, is applied whenever dotsync writes the file. Other permissions, owners and timestamps aren't. Symlinks inside managed directories are synced as symlinks; empty directories aren't synced.
 
 ### Can one file differ between machines?
 
-Not through templating, deliberately. Use per-OS entries, per-machine exclusions or local include files. See [Per-OS and per-machine differences](/dotsync/guides/differences/).
-
-### Is my data encrypted?
-
-dotsync relies on your git host's access control and transport encryption, and it keeps secrets out of the repository instead of encrypting them. See the [security model](/dotsync/concepts/security-model/).
+Not through templating, deliberately. Use per-OS entries, per-machine exclusions, or local include files. See [Per-OS and per-machine differences](/dotsync/guides/differences/).
 
 ### How big can managed directories be?
 
-Files over 10 MiB are refused. Directories with thousands of small files work, but dotfiles are rarely that big. Keep caches and plugin checkouts out with `ignore`.
+Files over 10 MiB aren't synced. Directories with thousands of small files work, but dotfiles are rarely that big; keep caches and plugin checkouts out with [`ignore`](/dotsync/guides/manage-files/#choosing-what-to-ignore).
+
+## Security
+
+### Is my data encrypted?
+
+In transit, by git's SSH or HTTPS connection to your host. At rest, it's as private as your repository. dotsync doesn't encrypt anything itself; it keeps secrets out of the repository instead. Files you encrypt yourself, for example with age or sops, sync as ciphertext. See the [security model](/dotsync/concepts/security-model/).
 
 ### Can several people share one repository?
 
-It's designed for one person's machines: everyone syncing with a repository gets the same files.
+It's designed for one person's machines: every machine syncing with a repository gets the same files, and anyone who can push to it controls what lands in everyone's home directory.
+
+## Managing it
+
+### How do I pause syncing on a machine?
+
+`dotsync agent uninstall` stops the background agent; `dotsync agent install` starts it again. Nothing is lost in between: local changes are sent on the next sync. To stop syncing one entry here, `dotsync exclude` it.
 
 ### How do I move to a different remote?
 
-Push the repository to its new home, then on each machine:
+Push the repository to its new home, then on each machine point the cache clone and the configuration at it:
 
 ```sh
 git -C ~/.local/share/dotsync/repo remote set-url origin <new-url>
 ```
 
-and update `remote` in `~/.config/dotsync/config.json`.
+and change `remote` in [`~/.config/dotsync/config.json`](/dotsync/reference/configuration/) to the same URL. `dotsync doctor` checks that the two agree.
+
+### Where does dotsync keep its own files?
+
+Under `~/.config/dotsync`, `~/.local/share/dotsync` and `~/.local/state/dotsync`, plus the binary in `~/.local/bin` and the background agent's definition. [Files and locations](/dotsync/reference/files/) lists everything.

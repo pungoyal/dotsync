@@ -1,128 +1,162 @@
 ---
 title: Quick start
-description: Sync your dotfiles between two machines in five minutes.
+description: Sync your dotfiles between two machines in five minutes, and watch a change travel from one to the other.
 ---
 
-import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Steps, Aside } from '@astrojs/starlight/components';
+import Terminal from '../../../components/Terminal.astro';
 
-In this tutorial you'll set up dotsync on two machines, share a few dotfiles between them, and see a change flow from one to the other. It takes about five minutes.
+export const initFirst = `
+$ dotsync init git@github.com:you/dotfiles.git
+cloning git@github.com:you/dotfiles.git ...
+remote is empty; creating the manifest
+installed ~/.local/bin/dotsync
+dotsync: in sync (0 files)
+automatic sync: launchd agent io.github.dotsync, every 300s
+`;
 
-**You'll need** two macOS or Linux machines with [dotsync installed](/dotsync/start/installation/), plus a GitHub (or GitLab, Gitea…) account.
+export const doctor = `
+$ dotsync doctor
+dotsync doctor
+  ✓ dotsync 0.5.0 (ed63c37, 2026-09-21T06:18:53Z) go1.27.1 darwin/arm64
+  ✓ git version 2.50.1 (Apple Git-155)
+  ✓ configuration: ~/.config/dotsync/config.json
+      remote git@github.com:you/dotfiles.git, branch main
+  ✓ remote reachable without prompts
+  ✓ background agent: launchd agent loaded
+  ✓ last sync 0s ago (ok)
+  ✓ 0 managed entries, 0 files
+  · backups: 0 file(s), 0 B in ~/.local/state/dotsync/backups (older than 90 days are pruned)
+
+Everything looks good.
+`;
+
+export const add = `
+$ dotsync add ~/.gitconfig -d "Git identity and aliases"
+managing ~/.gitconfig as 'gitconfig'
+  sent      ~/.gitconfig
+dotsync: 1 sent — pushed 3f2a9c1
+
+$ dotsync add ~/.config/nvim -d "Neovim" --ignore lazy-lock.json
+managing ~/.config/nvim as 'nvim'
+  sent      ~/.config/nvim/init.lua
+  sent      ~/.config/nvim/lua/plugins.lua
+dotsync: 2 sent — pushed 8b1d0e4
+`;
+
+export const status = `
+$ dotsync status
+dotsync on laptop: git@github.com:you/dotfiles.git (main @ 8b1d0e4)
+last sync: 2026-09-21T10:15:02+05:30 (ok)
+automatic sync: launchd agent loaded
+
+SOURCE     TARGET           STATUS  DESCRIPTION
+gitconfig  ~/.gitconfig     ok      Git identity and aliases
+nvim       ~/.config/nvim/  ok      Neovim
+`;
+
+export const initSecond = `
+$ dotsync init git@github.com:you/dotfiles.git
+cloning git@github.com:you/dotfiles.git ...
+installed ~/.local/bin/dotsync
+  updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/20260921-101730-4242/.gitconfig)
+  updated   ~/.config/nvim/init.lua
+  updated   ~/.config/nvim/lua/plugins.lua
+dotsync: 3 updated
+existing local files that were replaced are saved under ~/.local/state/dotsync/backups
+automatic sync: systemd user timer dotsync.timer, every 300s
+`;
+
+export const sendEdit = `
+$ git config --global alias.st status      # edits ~/.gitconfig
+$ dotsync sync
+  sent      ~/.gitconfig
+dotsync: 1 sent — pushed 51c7e02
+`;
+
+export const receiveEdit = `
+$ dotsync sync
+  updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/20260921-102204-5120/.gitconfig)
+dotsync: 1 updated
+`;
+
+In this tutorial you'll connect two machines, share a file and a directory between them, and watch a change travel from one to the other. It takes about five minutes.
+
+**You'll need** two macOS or Linux machines with [dotsync installed](/dotsync/start/installation/), and an account on GitHub, GitLab, Gitea or any other git host. The examples call them *laptop* (a Mac) and *desktop* (a Linux machine).
 
 ## 1. Create a private repository
 
 <Steps>
 
-1. Create a new, **empty, private** repository, for example `dotfiles`. Don't add a README or license; dotsync initializes it.
+1. On your git host, create a new, **empty, private** repository, for example `dotfiles`. Don't add a README or a license: dotsync sets the repository up itself.
 
    <Aside type="caution">
    Keep it **private**. dotsync blocks common secrets, but configuration files still reveal things like hostnames, email addresses and internal URLs.
    </Aside>
 
-2. Make sure `git` can reach it **without asking for a password**. The background agent has nobody to type one:
+2. Check that `git` can reach it **without asking for anything**. The background agent has nobody to type a password or passphrase:
 
    ```sh
    git ls-remote git@github.com:you/dotfiles.git
    ```
 
-   If that prompts you, see [git access for the agent](/dotsync/guides/background-agent/#git-access-without-prompts).
+   Any output, or none, is fine. A prompt is not: see [git access without prompts](/dotsync/guides/background-agent/#git-access-without-prompts).
 
 </Steps>
 
-## 2. Set up your first machine
+## 2. Set up the first machine
 
 <Steps>
 
-1. Point dotsync at the repository:
+1. On the laptop, point dotsync at the repository:
 
-   ```console frame="terminal"
-   $ dotsync init git@github.com:you/dotfiles.git
-   cloning git@github.com:you/dotfiles.git ...
-   remote is empty; creating the manifest
-   installed ~/.local/bin/dotsync
-   dotsync: in sync (0 files)
-   automatic sync: launchd agent io.github.dotsync, every 300s
-   ```
+   <Terminal title="laptop" code={initFirst} />
 
-   `init` created the manifest, ran a first sync and installed a background agent that syncs every five minutes. Check that everything is healthy:
+   `init` cloned the repository, wrote the manifest (the list of managed files) to it, and installed a background agent that syncs every five minutes. Check that everything is healthy:
 
-   ```sh
-   dotsync doctor
-   ```
+   <Terminal title="laptop" code={doctor} />
 
-   Every line should start with `✓`. If one doesn't, it tells you how to fix it. Usually it's git needing a password it can't ask for.
+   Every line should start with `✓` or `·`. Anything marked `✗` or `!` comes with a `→` line saying how to fix it. The usual culprit is git needing a password it can't ask for.
 
-2. Choose what to manage. Start with a couple of files and one directory:
+2. Choose what to manage. Start with one file and one directory:
 
-   ```console frame="terminal"
-   $ dotsync add ~/.gitconfig -d "Git identity and aliases"
-   managing ~/.gitconfig as 'gitconfig'
-     sent      ~/.gitconfig
-   dotsync: 1 sent — pushed 3f2a9c1
+   <Terminal title="laptop" code={add} />
 
-   $ dotsync add ~/.config/nvim -d "Neovim"
-   managing ~/.config/nvim as 'nvim'
-     sent      ~/.config/nvim/init.lua
-     sent      ~/.config/nvim/lua/plugins.lua
-   dotsync: 2 sent — pushed 8b1d0e4
-   ```
+   `-d` sets the description shown by `status`. `--ignore` keeps a file inside the directory out of sync, here the plugin lock file that each machine writes for itself.
 
-3. Look at what's managed:
+3. See what's managed:
 
-   ```sh
-   dotsync status
-   ```
+   <Terminal title="laptop" code={status} />
 
 </Steps>
 
-## 3. Set up your second machine
+## 3. Set up the second machine
 
 <Steps>
 
-1. Run the same `init`:
+1. On the desktop, run the same `init`:
 
-   ```console frame="terminal"
-   $ dotsync init git@github.com:you/dotfiles.git
-   cloning git@github.com:you/dotfiles.git ...
-     updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/20260921-101500-4242/.gitconfig)
-     updated   ~/.config/nvim/init.lua
-     updated   ~/.config/nvim/lua/plugins.lua
-   dotsync: 3 updated
-   ```
+   <Terminal title="desktop" code={initSecond} />
 
-   Your files are here. This machine already had a `.gitconfig`, so dotsync **backed it up** before replacing it.
+   Your files are here. The desktop already had a `.gitconfig` of its own, so dotsync **backed it up** before replacing it.
 
    <Aside type="tip">
-   Prefer to review differences before anything is replaced? Run `dotsync init --keep-existing` instead. Differing files then show up as [conflicts](/dotsync/guides/resolve-conflicts/) for you to settle one by one.
+   To review differences before anything is replaced, run `dotsync init --keep-existing` instead. Every existing file that differs then becomes a [conflict](/dotsync/guides/resolve-conflicts/) for you to settle, one by one.
    </Aside>
 
 </Steps>
 
-## 4. Watch a change sync
+## 4. Watch a change travel
 
 <Steps>
 
-1. On the **second** machine, edit a managed file:
+1. On the **desktop**, change a managed file and sync straight away instead of waiting for the agent:
 
-   ```sh
-   git config --global alias.st status     # edits ~/.gitconfig
-   ```
+   <Terminal title="desktop" code={sendEdit} />
 
-2. Sync it now instead of waiting for the agent:
+2. On the **laptop**, the agent installs it within five minutes. To get it now:
 
-   ```console frame="terminal"
-   $ dotsync sync
-     sent      ~/.gitconfig
-   dotsync: 1 sent — pushed 51c7e02
-   ```
-
-3. On the **first** machine, pull it in the same way, or wait up to five minutes and it arrives on its own:
-
-   ```console frame="terminal"
-   $ dotsync sync
-     updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/…)
-   dotsync: 1 updated
-   ```
+   <Terminal title="laptop" code={receiveEdit} />
 
 </Steps>
 
@@ -130,12 +164,13 @@ That's the whole workflow. **From now on, just edit your files.**
 
 ## What you've learned
 
-- `dotsync init <url>` connects a machine and starts the background agent.
-- `dotsync add <path>` manages a file or directory on **every** machine.
-- Changes sync automatically in both directions, and every replaced file is backed up first.
+- `dotsync init <url>` connects a machine and starts its background agent.
+- `dotsync add <path>` manages a file or directory on **every** machine, from whichever machine you run it on.
+- Changes sync both ways on their own, and every file dotsync replaces is backed up first.
+- `dotsync doctor` checks the setup; `dotsync status` shows every file.
 
 ## Where to next
 
-- [Manage files and directories](/dotsync/guides/manage-files/): ignore patterns, descriptions, stopping management.
+- [Manage files and directories](/dotsync/guides/manage-files/): ignore patterns, descriptions, permissions, and how to stop managing something.
 - [Resolve conflicts](/dotsync/guides/resolve-conflicts/): what happens when two machines edit the same file.
 - [How sync works](/dotsync/concepts/how-sync-works/): the model behind all of this.

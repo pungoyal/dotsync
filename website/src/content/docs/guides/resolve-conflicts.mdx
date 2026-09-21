@@ -1,68 +1,102 @@
 ---
 title: Resolve conflicts
-description: What a conflict is, how to inspect one, and the three ways to settle it.
+description: What a conflict is, how you find out about one, how to see both versions, and the three ways to settle it.
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
+import Terminal from '../../../components/Terminal.astro';
 
-A **conflict** means the same file changed on this machine **and** on another machine since they last agreed. dotsync never guesses which version you want. It changes nothing on this machine and nothing in the repository, and it waits for you. All your other files keep syncing normally in the meantime.
+export const syncConflict = `
+$ dotsync sync
+  CONFLICT  ~/.gitconfig  (changed here and on another machine; see \`dotsync diff ~/.gitconfig\`)
+dotsync: 1 conflict
+`;
 
-## When they happen
+export const diff = `
+$ dotsync diff ~/.gitconfig
+=== ~/.gitconfig  [conflict]
+--- remote/gitconfig
++++ local/gitconfig
+@@ -1,5 +1,5 @@
+ [user]
+ 	name = You
+-	email = me@work.example
++	email = me@home.example
+ [alias]
+ 	st = status
+`;
 
-- You edited a file on your laptop while it was offline, and edited it on your desktop too.
-- Two machines edited the same file within the same sync interval.
-- The same new file appeared inside a managed directory on two machines.
-- A file became managed on a machine that already had a different version, and that machine uses `--keep-existing`.
+export const resolve = `
+$ dotsync resolve ~/.gitconfig --keep local
+keeping this machine's version of ~/.gitconfig
+  sent      ~/.gitconfig
+dotsync: 1 sent — pushed 1b110c3
+`;
 
-Deleting a file on one machine while it changed on another is **not** a conflict. The changed version wins, so no work is lost.
+A **conflict** means a file changed on this machine **and** on another machine since the two last agreed on it. dotsync never guesses which version you want and never merges them. It changes nothing on this machine and nothing in the repository, and waits for you. Every other file keeps syncing normally in the meantime.
+
+## When conflicts happen
+
+- You edited a file on your laptop while it was offline, and edited the same file on your desktop.
+- Two machines changed the same file before either had synced; with the default five-minute interval, that takes two edits within a few minutes of each other.
+- The same new file appeared inside a managed directory on two machines, with different content.
+- An entry became managed on a machine that already had a different version of the file, and that machine was set up with `--keep-existing`.
+
+Deleting a file on one machine while it changed on another is **not** a conflict: the changed version wins, so no work is lost. If both machines made the *same* change, there's nothing to resolve either.
 
 ## How you find out
 
-- `dotsync sync` prints a `CONFLICT` line.
-- `dotsync status` lists the file under *conflicts*.
-- The background agent posts a **desktop notification** the first time it sees a conflict.
+- `dotsync sync` prints a `CONFLICT` line:
+
+  <Terminal code={syncConflict} />
+
+- `dotsync status` shows the entry as `CONFLICT` and lists every conflict at the bottom, with when it started.
+- `dotsync doctor` counts them.
+- The background agent posts a **desktop notification** when a conflict first appears. It doesn't repeat it on later syncs.
 
 ## Settle a conflict
 
 <Steps>
 
-1. **See what differs.** The remote version is on the `-` side and yours is on the `+` side:
+1. **See what differs.** `dotsync diff` shows the repository's version on the `-` side and this machine's on the `+` side:
 
-   ```console frame="terminal"
-   $ dotsync diff ~/.gitconfig
-   === ~/.gitconfig  [conflict]
-   --- remote/gitconfig
-   +++ local/gitconfig
-   @@ -1,3 +1,3 @@
-    [user]
-   -	email = me@work.example
-   +	email = me@home.example
-   ```
+   <Terminal code={diff} />
 
-2. **Choose.** Pick one:
+   With no path, `dotsync diff` shows every file that differs from the repository, not just conflicts.
+
+2. **Choose.**
 
    | You want | Run |
    |---|---|
    | this machine's version everywhere | `dotsync resolve ~/.gitconfig --keep local` |
    | the other version here | `dotsync resolve ~/.gitconfig --keep remote` |
-   | a mix of both | edit the local file until it's right, then `dotsync resolve ~/.gitconfig --keep local` |
+   | a mix of both | edit this machine's file until it's right, then `dotsync resolve ~/.gitconfig --keep local` |
 
-   With `--keep remote`, your version is **backed up** first.
+   With `--keep remote`, this machine's version is **backed up** before it's replaced.
 
-3. **Done.** `resolve` syncs straight away. Other machines pick up the result on their next sync.
+3. **That's it.** `resolve` fetches first, then syncs straight away:
+
+   <Terminal code={resolve} />
+
+   Every other machine installs the result on its next sync.
 
 </Steps>
 
-<Aside type="tip">
-If you edit the file so it matches the remote version exactly, the conflict clears by itself on the next sync. You don't need `resolve`.
-</Aside>
-
-You can resolve every conflict under a directory at once:
+To settle every conflict under a directory at once, name the directory:
 
 ```sh
 dotsync resolve ~/.config/nvim --keep local
 ```
 
+<Aside type="tip">
+If you edit the file until it matches the other version exactly, the conflict clears on the next sync by itself. You don't need `resolve`.
+</Aside>
+
 ## Why resolving is safe
 
-`resolve` doesn't copy anything itself. It only records which version counts as "last agreed", and the normal sync rules then do the work with all their safety checks. If a third machine changed the file again in the meantime, you get a fresh conflict instead of a lost edit. The details are in [How sync works](/dotsync/concepts/how-sync-works/).
+`resolve` doesn't copy anything itself. It only records which version counts as the one both sides last agreed on, which turns the conflict into an ordinary one-way change. The normal sync then carries it out, with all its checks: the backup before a file is replaced, and the re-read that catches a file changing mid-sync. If yet another machine changed the file in the meantime, you get a fresh conflict instead of a lost edit. [How sync works](/dotsync/concepts/how-sync-works/) explains the model.
+
+## Avoiding conflicts
+
+- Programs that rewrite a config file whenever they run, such as `mise use -g` or an editor saving its settings, make conflicts more likely. Run `dotsync sync` right after such a change so it reaches the other machines straight away.
+- Keep settings that are meant to differ per machine out of the shared file, in a [local include file](/dotsync/guides/differences/#shared-file-local-overrides).

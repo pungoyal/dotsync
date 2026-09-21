@@ -1,0 +1,180 @@
+---
+/**
+ * A terminal window showing dotsync's real output, with its status words coloured the way the
+ * rest of the site colours sync outcomes. Pass the transcript as `code`: lines starting with "$ "
+ * are commands; everything else is output. Colouring is decoration only: the text is unchanged,
+ * so the transcript reads (and is searched and copied) exactly as dotsync prints it. A line that is
+ * just "…" marks output left out.
+ */
+interface Props {
+	code: string;
+	/** Shown in the title bar, e.g. the machine the transcript is from. */
+	title?: string;
+	class?: string;
+}
+
+const { code, title, class: className } = Astro.props;
+
+type Span = { text: string; cls?: string };
+
+// Words dotsync prints, and the outcome they stand for.
+const tokens: [RegExp, string][] = [
+	[/^(\s{2})(updated|removed)(?=\s)/, 'in'],
+	[/^(\s{2})(sent|deleted)(?=\s)/, 'out'],
+	[/^(\s{2})(waiting)(?=\s)/, 'dim'],
+	[/\b(CONFLICT(?: \(\d+\))?)/, 'conflict'],
+	[/\b(BLOCKED(?: \(\d+\))?)/, 'blocked'],
+	[/\b(ERROR)\b/, 'blocked'],
+	[/(\d+ incoming)/, 'in'],
+	[/(\d+ outgoing)/, 'out'],
+	[/(: download)$/, 'in'],
+	[/(: upload)$/, 'out'],
+	[/(: conflict)$/, 'conflict'],
+	[/(: blocked)(?= |$)/, 'blocked'],
+	[/(?<=\s)(ok)(?=\s{2}|$)/, 'ok'],
+	[/^(\s*)(✓)/, 'ok'],
+	[/^(\s*)(✗)/, 'blocked'],
+	[/^(\s*)(!)(?= )/, 'conflict'],
+	[/^(\s*)(→.*)$/, 'accent'],
+	[/^(\s*)(↳.*)$/, 'dim'],
+	[/^(@@.*@@)$/, 'dim'],
+	[/^(-(?!--).*)$/, 'del'],
+	[/^(\+(?!\+\+).*)$/, 'add'],
+	[/^(dotsync: .*)$/, 'strong'],
+];
+
+function colourLine(line: string): Span[] {
+	for (const [rx, cls] of tokens) {
+		const m = rx.exec(line);
+		if (!m) continue;
+		// The last capture group is the coloured part; anything captured before it is kept plain.
+		const word = m[m.length - 1];
+		const lead = m.length > 2 ? m[1] : '';
+		const start = m.index + lead.length;
+		const before = line.slice(0, start);
+		const after = line.slice(start + word.length);
+		const rest = after ? colourLine(after) : [];
+		return [{ text: before }, { text: word, cls }, ...rest];
+	}
+	return [{ text: line }];
+}
+
+const lines = code.replace(/^\n+|\n+\s*$/g, '').split('\n');
+const rendered = lines.map((line) => {
+	if (line.startsWith('$ ')) {
+		const [, cmd, comment] = /^(.*?)(\s+# .*)?$/.exec(line.slice(2))!;
+		return { kind: 'cmd', spans: [{ text: cmd }, ...(comment ? [{ text: comment, cls: 'dim' }] : [])] };
+	}
+	if (/^\s*…\s*$/.test(line)) return { kind: 'gap', spans: [{ text: line }] };
+	return { kind: 'out', spans: colourLine(line) };
+});
+
+// Built as one string: whitespace inside <pre> is significant, so no template formatting may leak in.
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const html = rendered
+	.map(
+		(l) =>
+			`<span class="line ${l.kind}">` +
+			(l.kind === 'cmd' ? '<span class="prompt" aria-hidden="true">$ </span>' : '') +
+			l.spans.map((sp) => (sp.cls ? `<span class="t-${sp.cls}">${esc(sp.text)}</span>` : esc(sp.text))).join('') +
+			'</span>'
+	)
+	.join('\n');
+---
+
+<figure class:list={['ds-term not-content', className]}>
+	<div class="bar" aria-hidden={title ? undefined : 'true'}>
+		<span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+		{title && <figcaption>{title}</figcaption>}
+	</div>
+	<pre tabindex="0"><code set:html={html} /></pre>
+</figure>
+
+<style>
+	.ds-term {
+		--pad: 1rem;
+		margin-block: 1.25rem;
+		border: 1px solid var(--ds-term-border);
+		border-radius: var(--ds-radius);
+		background: var(--ds-term-bg);
+		color: var(--ds-term-fg);
+		box-shadow: var(--ds-shadow);
+		overflow: hidden;
+		color-scheme: dark;
+	}
+	.bar {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		min-height: 2.25rem;
+		padding-inline: 0.85rem;
+		background: var(--ds-term-bar);
+		border-bottom: 1px solid var(--ds-term-border);
+	}
+	.lights {
+		display: inline-flex;
+		gap: 0.4rem;
+	}
+	.lights i {
+		width: 0.62rem;
+		height: 0.62rem;
+		border-radius: 50%;
+		background: #2a3544;
+	}
+	figcaption {
+		font-family: var(--sl-font-mono);
+		font-size: 0.75rem;
+		color: var(--ds-term-dim);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	pre {
+		margin: 0;
+		padding: var(--pad) calc(var(--pad) + 0.15rem);
+		overflow-x: auto;
+		font-family: var(--sl-font-mono);
+		font-size: 0.8125rem;
+		line-height: 1.65;
+		background: transparent;
+		border: 0;
+		tab-size: 4;
+	}
+	pre:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: -2px;
+	}
+	code {
+		font: inherit;
+		color: inherit;
+		background: none;
+		padding: 0;
+		border: 0;
+		white-space: pre;
+	}
+	pre :global(.cmd) {
+		color: #f3f6f9;
+		font-weight: 500;
+	}
+	pre :global(.prompt) {
+		color: var(--ds-term-prompt);
+		user-select: none;
+	}
+	pre :global(.gap) {
+		color: var(--ds-term-dim);
+	}
+	pre :global(.t-in) { color: #38bdf8; }
+	pre :global(.t-out) { color: #a78bfa; }
+	pre :global(.t-ok) { color: #4ade80; }
+	pre :global(.t-conflict) { color: #fbbf24; font-weight: 600; }
+	pre :global(.t-blocked) { color: #fb7185; font-weight: 600; }
+	pre :global(.t-dim) { color: var(--ds-term-dim); }
+	pre :global(.t-accent) { color: #5eead4; }
+	pre :global(.t-del) { color: #fca5a5; }
+	pre :global(.t-add) { color: #86efac; }
+	pre :global(.t-strong) { color: #f3f6f9; }
+
+	@media (forced-colors: active) {
+		.ds-term { border: 1px solid CanvasText; }
+	}
+</style>

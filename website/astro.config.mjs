@@ -14,7 +14,7 @@ export default defineConfig({
 		starlight({
 			title: 'dotsync',
 			description:
-				'Set-and-forget dotfile sync for macOS and Linux. Conflict-safe, secret-aware and automatic.',
+				'Set-and-forget dotfile sync for macOS and Linux: automatic in both directions, backed up before every change, conflict-safe and secret-aware.',
 			logo: {
 				light: './src/assets/logo-light.svg',
 				dark: './src/assets/logo-dark.svg',
@@ -37,8 +37,11 @@ export default defineConfig({
 			head: [
 				{ tag: 'meta', attrs: { property: 'og:image', content: 'https://pungoyal.github.io/dotsync/og.png' } },
 				{ tag: 'meta', attrs: { property: 'og:image:alt', content: 'dotsync: your dotfiles, the same everywhere' } },
+				{ tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+				{ tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
 				{ tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
-				{ tag: 'meta', attrs: { name: 'theme-color', content: '#0f766e' } },
+				{ tag: 'meta', attrs: { name: 'theme-color', content: '#0c1119', media: '(prefers-color-scheme: dark)' } },
+				{ tag: 'meta', attrs: { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' } },
 				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/dotsync/favicon-32.png' } },
 				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/dotsync/apple-touch-icon.png' } },
 				{ tag: 'link', attrs: { rel: 'manifest', href: '/dotsync/site.webmanifest' } },
@@ -48,6 +51,7 @@ export default defineConfig({
 				styleOverrides: { borderRadius: '0.6rem', codeFontFamily: "'JetBrains Mono Variable', ui-monospace, monospace" },
 			},
 			components: {
+				Hero: './src/components/Hero.astro',
 				Footer: './src/components/Footer.astro',
 			},
 			plugins: [
@@ -96,6 +100,7 @@ export default defineConfig({
 				{
 					label: 'Reference',
 					items: [
+						{ label: 'Cheat sheet', slug: 'reference/cheat-sheet' },
 						{ label: 'Commands', slug: 'reference/commands' },
 						{ label: 'Manifest', slug: 'reference/manifest' },
 						{ label: 'Machine configuration', slug: 'reference/configuration' },

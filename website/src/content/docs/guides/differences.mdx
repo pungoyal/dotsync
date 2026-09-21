@@ -1,73 +1,111 @@
 ---
 title: Per-OS and per-machine differences
-description: Keep machine-specific configuration out of the shared manifest, with OS filters, per-machine exclusions, portable targets and local include files.
+description: Keep machine-specific configuration out of the shared manifest with OS filters, per-machine exclusions, portable targets and local include files.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import Terminal from '../../../components/Terminal.astro';
 
-dotsync makes files **identical** everywhere they're managed. It deliberately has no templating. Here are the tools for when machines need to differ, from simplest to most flexible.
+export const skipped = `
+$ dotsync status
+…
+SOURCE                    TARGET                              STATUS   DESCRIPTION
+karabiner/karabiner.json  ~/.config/karabiner/karabiner.json  skipped  Keyboard remapping
+                                                              ↳ only for darwin
+`;
+
+export const excluded = `
+$ dotsync exclude ~/.config/karabiner/karabiner.json
+'karabiner/karabiner.json' is no longer managed on this machine; its local files are left as they are
+dotsync: in sync (14 files)
+
+$ dotsync exclude
+excluded on this machine: karabiner/karabiner.json
+`;
+
+dotsync makes files **identical** everywhere they're managed, and deliberately has no templating. When machines genuinely need to differ, these are your tools, from the simplest to the most flexible.
 
 ## Only on macOS, or only on Linux
 
 ```sh
 dotsync add ~/.config/karabiner/karabiner.json --os darwin -d "Keyboard remapping"
-dotsync set ~/.config/karabiner/karabiner.json --os darwin   # for an entry that already exists
+dotsync set ~/.config/karabiner/karabiner.json --os darwin    # for an entry that already exists
+dotsync set ~/.config/karabiner/karabiner.json --any-os       # undo
 ```
 
-Machines running another OS skip the entry and show it as *skipped* in `status`.
+Machines running another OS skip the entry: they neither read nor write the file, and `status` shows why:
+
+<Terminal code={skipped} />
+
+Add an OS-specific entry **on a machine running that OS**, so the file is uploaded straight away. Added elsewhere, the entry is created empty, and the first matching machine to sync uploads its copy.
 
 ## A different file per OS
 
-Use two entries with the same target but different sources, each limited to one OS:
+To have, say, one `alacritty.toml` on your Macs and another on your Linux machines, use two entries with the **same target**, different sources, and one OS each:
 
-```sh
-# on the Mac
-dotsync add ~/.config/alacritty/alacritty.toml --source alacritty/macos.toml --os darwin
-# on a Linux machine
-dotsync add ~/.config/alacritty/alacritty.toml --source alacritty/linux.toml --os linux
+```json title="manifest.json (excerpt)"
+{
+  "source": "alacritty/macos.toml",
+  "target": "~/.config/alacritty/alacritty.toml",
+  "description": "Alacritty (macOS)",
+  "os": ["darwin"]
+},
+{
+  "source": "alacritty/linux.toml",
+  "target": "~/.config/alacritty/alacritty.toml",
+  "description": "Alacritty (Linux)",
+  "os": ["linux"]
+}
 ```
+
+Each machine only manages the entry for its own OS, so the two never meet. `dotsync add` refuses a second entry for a target that's already managed, even for another OS, so create the first entry with `dotsync add … --source alacritty/macos.toml --os darwin` on a Mac, then add the second [by hand](/dotsync/guides/manage-files/#edit-the-manifest-by-hand) in a clone of your repository and push. The first Linux machine to sync uploads its file.
 
 ## Skip an entry on one machine
 
 On the machine that shouldn't have it:
 
+<Terminal code={excluded} />
+
 ```sh
-dotsync exclude ~/.config/karabiner/karabiner.json
-dotsync exclude            # list what's excluded here
-dotsync include ~/.config/karabiner/karabiner.json   # undo
+dotsync include ~/.config/karabiner/karabiner.json    # manage it here again
 ```
 
-The machine stops managing the entry. Its local file stays as it is, and other machines are unaffected. Exclusions are stored in this machine's [configuration](/dotsync/reference/configuration/), never in the shared manifest.
+The machine stops managing the entry. Its local file stays exactly as it is, and the other machines aren't affected. Exclusions are stored in this machine's [configuration](/dotsync/reference/configuration/), never in the shared manifest.
 
-## Shared file plus local overrides
+When you `include` an entry again and the local file differs from the shared version, it's treated like a file on a [new machine](/dotsync/guides/add-a-machine/#files-the-machine-already-has): backed up and replaced, or reported as a conflict if the machine uses `--keep-existing`.
 
-Many tools can include a second file. Sync the main file and keep a small, unmanaged local file next to it:
+## Shared file, local overrides
 
-| Tool | In the synced file | Local file |
+Many programs can include a second file. Sync the main file, and keep a small unmanaged file next to it for what's specific to each machine:
+
+| Program | In the synced file | Local file |
 |---|---|---|
 | git | `[include] path = ~/.gitconfig.local` | `~/.gitconfig.local` |
-| ssh | `Include ~/.ssh/config.local` (at the top) | `~/.ssh/config.local` |
-| zsh / bash | `[ -f ~/.zshrc.local ] && . ~/.zshrc.local` | `~/.zshrc.local` |
+| ssh | `Include ~/.ssh/config.local`, at the top | `~/.ssh/config.local` |
+| zsh, bash | `[ -f ~/.zshrc.local ] && . ~/.zshrc.local` | `~/.zshrc.local` |
 | fish | `test -f ~/.config/fish/local.fish; and source ~/.config/fish/local.fish` | `~/.config/fish/local.fish` |
-| tmux | `if-shell "test -f ~/.tmux.local.conf" "source ~/.tmux.local.conf"` | `~/.tmux.local.conf` |
-| Neovim | `pcall(require, 'local')` | `~/.config/nvim/lua/local.lua` (add to `ignore`) |
+| tmux | `source-file -q ~/.tmux.local.conf` | `~/.tmux.local.conf` |
+| Neovim | `pcall(require, 'local')` | `~/.config/nvim/lua/local.lua` |
+| mise | files in `conf.d/` are loaded automatically | `~/.config/mise/conf.d/local.toml` |
+
+If the local file sits inside a managed directory, as the Neovim, fish and mise ones would when the whole directory is managed, [ignore it](/dotsync/guides/manage-files/#choosing-what-to-ignore): `dotsync set ~/.config/nvim --ignore lua/local.lua`.
 
 ## Tools that write absolute paths
 
-Some tools write the absolute path of whatever program ran them into your config files. When that file syncs to a machine where the program lives somewhere else, the setting breaks there.
+Some tools write the absolute path of a program into your config files. Synced to a machine where the program lives somewhere else, the setting breaks there.
 
-The common case is `gh auth setup-git`, which writes
+The usual case is `gh auth setup-git`, which writes
 
-```ini title="~/.gitconfig (written by gh on Linux)"
+```ini title="~/.gitconfig, as written by gh on Linux"
 [credential "https://github.com"]
 	helper = !/usr/bin/gh auth git-credential
 ```
 
-On a Mac, `gh` is usually in `/opt/homebrew/bin`, so git can no longer authenticate to GitHub over HTTPS. If your dotfiles remote uses HTTPS, dotsync can't sync either. `dotsync doctor`, `status` and the agent's notification all name the setting and the file it's in.
+On a Mac, `gh` is usually in `/opt/homebrew/bin`, so git there can no longer authenticate to GitHub over HTTPS, and if your dotfiles remote uses HTTPS, dotsync can't sync either. `dotsync doctor`, `status` and the agent's notification all name the setting and the file it's in.
 
 Fix it in either of two ways:
 
-- **Refer to the program by name**, so each machine finds its own copy on its `PATH`:
+- **Name the program without its path**, so each machine finds its own copy on its `PATH`:
 
   ```ini title="~/.gitconfig"
   [credential "https://github.com"]
@@ -75,18 +113,13 @@ Fix it in either of two ways:
   	helper = !gh auth git-credential
   ```
 
-- **Keep machine-specific settings in a local file** that isn't synced, and include it from the shared one (see [below](#shared-file-plus-local-overrides)):
+- **Keep machine-specific settings in a local file** that isn't synced, and include it from the shared one ([see above](#shared-file-local-overrides)).
 
-  ```ini title="~/.gitconfig"
-  [include]
-  	path = ~/.gitconfig.local
-  ```
-
-Edit the file on the machine where it's broken. The next sync sends the fix everywhere.
+Make the edit on the machine where it's broken; the next sync sends the fix everywhere.
 
 ## Machines with different paths
 
-Write targets in a portable form: `~/…`, or `$XDG_CONFIG_HOME/…` if some machines relocate their config directory. Each machine expands them itself. Absolute paths aren't allowed in the manifest, because they differ between machines. See [targets](/dotsync/reference/manifest/#targets).
+Write targets in a portable form: `~/…`, or `$XDG_CONFIG_HOME/…` if some machines move their config directory. Each machine expands them itself. Absolute paths aren't allowed in the manifest, because they differ between machines. See [targets](/dotsync/reference/manifest/#targets).
 
 <Aside type="tip">
 Need real templating, where one file renders differently per host? [chezmoi](https://www.chezmoi.io/) is built for that. See the [comparison](/dotsync/concepts/comparison/).

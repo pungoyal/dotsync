@@ -1,0 +1,55 @@
+---
+title: Cheat sheet
+description: Every everyday dotsync task on one page, with the command that does it.
+---
+
+Paths can be given as you'd type them (`~/.gitconfig`) or as the entry's source (`gitconfig`). Changes to the manifest apply to every machine; exclusions apply only to the machine you run them on.
+
+## Set up
+
+| Task | Command |
+|---|---|
+| Connect this machine | `dotsync init git@github.com:you/dotfiles.git` |
+| Connect it, but review differing files one by one | `dotsync init --keep-existing <url>` |
+| Check that everything works | `dotsync doctor` |
+| Update dotsync | `dotsync update` |
+
+## Choose what's managed
+
+| Task | Command |
+|---|---|
+| Manage a file | `dotsync add ~/.gitconfig -d "Git identity"` |
+| Manage a directory, minus some files | `dotsync add ~/.config/nvim --ignore lazy-lock.json` |
+| Manage it on macOS only | `dotsync add ~/.config/karabiner/karabiner.json --os darwin` |
+| Skip more files in a directory | `dotsync set ~/.config/nvim --ignore 'spell/*.spl'` |
+| Force permissions | `dotsync set ~/.ssh/config --mode 0600` |
+| Change a description | `dotsync describe ~/.gitconfig "Git identity and aliases"` |
+| Stop managing, everywhere | `dotsync remove ~/.tmux.conf` |
+| Stop managing, on this machine only | `dotsync exclude ~/.config/karabiner/karabiner.json` |
+| Manage it here again | `dotsync include ~/.config/karabiner/karabiner.json` |
+| List everything managed | `dotsync list` |
+
+## Day to day
+
+| Task | Command |
+|---|---|
+| See the state of every file | `dotsync status` |
+| … including every file in every directory | `dotsync status -v` |
+| … against the very latest remote | `dotsync status --fetch` |
+| Sync now | `dotsync sync` |
+| See what differs from the remote | `dotsync diff` |
+| See the history | `dotsync log` |
+
+## When something needs you
+
+| Task | Command |
+|---|---|
+| Inspect a conflict | `dotsync diff ~/.gitconfig` |
+| Keep this machine's version | `dotsync resolve ~/.gitconfig --keep local` |
+| Take the other version | `dotsync resolve ~/.gitconfig --keep remote` |
+| Allow one line that only looks like a secret | put `dotsync:allow-secret` in a comment on that line |
+| Find a backup | `ls -r ~/.local/state/dotsync/backups/` |
+| Check the background agent | `dotsync agent status` |
+| Re-install it, after changing `interval` or moving `git` | `dotsync agent install` |
+
+Every command and flag is in the [command reference](/dotsync/reference/commands/).

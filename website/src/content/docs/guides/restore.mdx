@@ -1,15 +1,24 @@
 ---
 title: Restore a previous version
-description: Get back a file dotsync replaced or deleted, or any earlier synced version.
+description: Get back a file that dotsync replaced or deleted on this machine, or any version that was ever synced.
 ---
 
 import { Aside, FileTree } from '@astrojs/starlight/components';
+import Terminal from '../../../components/Terminal.astro';
+import ref from '../../../data/reference.json';
 
-There are two places to look, depending on what you need.
+export const log = `
+$ dotsync log -n 3
+51c7e02 2026-09-21 11:16 desktop: update 1 file(s)
+8b1d0e4 2026-09-21 10:58 laptop: manage nvim; update 2 file(s)
+3f2a9c1 2026-09-21 10:57 laptop: manage gitconfig; update 1 file(s)
+`;
 
-## Something dotsync replaced or deleted on this machine
+There are two places to look: this machine's **backups**, for anything dotsync replaced or deleted here, and the repository's **history**, for every version ever synced from any machine.
 
-Before dotsync replaces or deletes a local file, it copies it to a backup directory named after the sync run. Paths inside mirror your home directory:
+## Something dotsync replaced or deleted here
+
+Before dotsync replaces or deletes a local file, it copies it into a backup directory named after the sync run: the date and time, then the process ID. Inside, paths mirror your home directory:
 
 <FileTree>
 - ~/.local/state/dotsync/backups/
@@ -17,30 +26,38 @@ Before dotsync replaces or deletes a local file, it copies it to a backup direct
     - .gitconfig
     - .config/
       - nvim/
-        - old.lua
+        - init.lua
   - 20260922-083001-5120/
     - .zshrc
 </FileTree>
 
-Find the version you want and copy it back:
+`sync` names the backup as it makes it:
+
+```text
+  updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/20260921-111609-4242/.gitconfig)
+```
+
+Copy the version you want back into place, and let the next sync send it to the other machines:
 
 ```sh
-ls -t ~/.local/state/dotsync/backups/                  # newest first
+ls -r ~/.local/state/dotsync/backups/          # newest run first: names sort by time
 cp ~/.local/state/dotsync/backups/20260921-111609-4242/.gitconfig ~/.gitconfig
-dotsync sync                                           # sends it to every machine
+dotsync sync
 ```
 
-## Any earlier synced version
+If a run backs up the same file twice, the later copy gets a `.~1~` suffix, then `.~2~`, and so on: a backup is never overwritten.
 
-Every change ever synced is in your repository's history, together with the machine that made it:
+### How long backups are kept
 
-```console frame="terminal"
-$ dotsync log
-51c7e02 2026-09-21 11:16 desktop: update 1 file(s)
-8b1d0e4 2026-09-21 10:58 laptop: manage nvim; update 2 file(s)
-```
+Once a day, backups older than {ref.defaults.backup_retention_days} days are deleted, **except the most recent backup of each file**, which is kept however old it is. Set [`backup_retention_days`](/dotsync/reference/configuration/) to change the period, or to `0` to keep everything. `dotsync doctor` shows how much space backups use.
 
-To pull an old version out, use any clone of the repository. The cache clone at `~/.local/share/dotsync/repo` works too, for reading only:
+## Any version that was ever synced
+
+Every synced change is a commit in your repository, named after the machine that made it:
+
+<Terminal code={log} />
+
+To pull out an old version, use any clone of the repository. dotsync's cache clone at `~/.local/share/dotsync/repo` works too, as long as you only read from it. A file's content is under `files/`, at its source:
 
 ```sh
 git -C ~/.local/share/dotsync/repo log --oneline -- files/gitconfig
@@ -49,7 +66,5 @@ dotsync sync
 ```
 
 <Aside>
-Restoring is just an edit, so it syncs like any other change. If another machine changed the same file in the meantime, you get a [conflict](/dotsync/guides/resolve-conflicts/) rather than a silent overwrite.
+Restoring is just an edit, so it syncs like any other change. If another machine changed the same file in the meantime, you get a [conflict](/dotsync/guides/resolve-conflicts/), not a silent overwrite.
 </Aside>
-
-Once a day, backups older than 90 days are deleted, **except the most recent backup of each file**, which is kept however old it is. Change the period with [`backup_retention_days`](/dotsync/reference/configuration/) (`0` keeps everything). `dotsync doctor` shows how much space backups use.

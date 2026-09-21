@@ -1,11 +1,17 @@
 ---
 title: Installation
-description: Install dotsync on macOS or Linux with the install script, go install, a release binary, or from source.
+description: Install dotsync on macOS or Linux with the install script, go install, a release archive or from source, and keep it up to date.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import Terminal from '../../../components/Terminal.astro';
 
-dotsync is a single static binary for **macOS and Linux** on **amd64 and arm64**. It needs `git` 2.20 or newer at runtime, and nothing else.
+export const version = `
+$ dotsync version
+dotsync 0.5.0 (ed63c37, 2026-09-21T06:18:53Z) go1.27.1 darwin/arm64
+`;
+
+dotsync is a single static binary for **macOS and Linux** on **amd64 and arm64**. At runtime it needs `git` 2.20 or newer, and nothing else.
 
 ## Install
 
@@ -18,16 +24,23 @@ curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | 
 
 The script:
 
-1. picks the right archive for your OS and CPU from the latest release
-2. checks its **SHA-256 checksum** against the release's `checksums.txt`
-3. checks the **signed build provenance** with `gh attestation verify`, if the [GitHub CLI](https://cli.github.com) is installed
+1. finds the latest release, and the archive for your OS and CPU
+2. checks the archive's **SHA-256 checksum** against the release's `checksums.txt`
+3. checks its **signed build provenance** with `gh attestation verify`, if the [GitHub CLI](https://cli.github.com) is installed and logged in
 4. installs `dotsync` to `~/.local/bin`
+5. re-installs the background agent, if this machine already has one, so it matches the new version
 
-| Variable | Default | Purpose |
+It needs `curl` or `wget`, and `sha256sum` or `shasum`. These variables change what it does:
+
+| Variable | Default | Effect |
 |---|---|---|
-| `DOTSYNC_VERSION` | latest | install a specific release, e.g. `v0.1.0` |
-| `DOTSYNC_BIN_DIR` | `~/.local/bin` | install location |
-| `DOTSYNC_REQUIRE_ATTESTATION` | `0` | set to `1` to refuse to install unless the provenance check passes |
+| `DOTSYNC_VERSION` | latest | release to install, e.g. `v0.5.0` |
+| `DOTSYNC_BIN_DIR` | `~/.local/bin` | where to install |
+| `DOTSYNC_REQUIRE_ATTESTATION` | `0` | `1` refuses to install unless the provenance check passes |
+
+```sh title="For example"
+curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | DOTSYNC_REQUIRE_ATTESTATION=1 sh
+```
 
 </TabItem>
 <TabItem label="go install">
@@ -38,14 +51,14 @@ With Go 1.23 or newer:
 go install github.com/pungoyal/dotsync/cmd/dotsync@latest
 ```
 
-The binary ends up in `$(go env GOBIN)`, or `~/go/bin` if that's unset.
+The binary goes to `$(go env GOBIN)`, or to `$(go env GOPATH)/bin` (usually `~/go/bin`) if `GOBIN` isn't set.
 
 </TabItem>
-<TabItem label="Release binary">
+<TabItem label="Release archive">
 
-1. Download `dotsync_<version>_<os>_<arch>.tar.gz` from the [latest release](https://github.com/pungoyal/dotsync/releases/latest).
+1. Download `dotsync_<version>_<os>_<arch>.tar.gz` from the [latest release](https://github.com/pungoyal/dotsync/releases/latest). `<os>` is `darwin` or `linux`; `<arch>` is `amd64` or `arm64`.
 2. Optionally, [verify it](/dotsync/project/verifying-releases/).
-3. Extract it and move `dotsync` somewhere on your `PATH`:
+3. Extract the binary and put it on your `PATH`:
 
    ```sh
    tar -xzf dotsync_*_darwin_arm64.tar.gz dotsync
@@ -55,16 +68,18 @@ The binary ends up in `$(go env GOBIN)`, or `~/go/bin` if that's unset.
 </TabItem>
 <TabItem label="From source">
 
+With Go 1.23 or newer:
+
 ```sh
 git clone https://github.com/pungoyal/dotsync
 cd dotsync
-make build        # → bin/dotsync
+make build        # writes bin/dotsync
 ```
 
 </TabItem>
 </Tabs>
 
-## Put it on your PATH
+## Put it on your `PATH`
 
 If `dotsync version` says *command not found*, add `~/.local/bin` to your `PATH`:
 
@@ -88,33 +103,34 @@ fish_add_path ~/.local/bin
 
 ## Check it works
 
-```console frame="terminal"
-$ dotsync version
-dotsync 0.1.0 (289c20a, 2026-09-21T06:18:53Z) go1.27.1 darwin/arm64
-```
+<Terminal code={version} />
+
+That's the version, the commit it was built from and that commit's date, the Go version, and the platform.
 
 <Aside type="tip">
-`dotsync init` also copies the binary to `~/.local/bin/dotsync`, which is where the background agent runs it from. You don't need to install it there yourself.
+However you install it, `dotsync init` copies the binary to `~/.local/bin/dotsync`. That copy is the one the background agent runs, so a `dotsync` elsewhere on your `PATH` is fine.
 </Aside>
 
 ## Update
 
 ```sh
-dotsync update           # install the latest release (checksum + provenance verified)
-dotsync update --check   # just tell me whether there's a newer one
+dotsync update           # install the latest release: checksum and provenance verified
+dotsync update --check   # only say whether there's a newer one
 ```
 
-`dotsync doctor` also tells you when an update is available. Both `update` and the install script re-install the background agent with the new version, so there's nothing else to do. Releases before 0.3.0 don't have `update`: run the install script once more to get it.
+`update` replaces the binary you ran and, if it's a different file, the agent's copy in `~/.local/bin`. If a background agent is installed, it then re-installs it with the new version, so there's nothing else to do. It only replaces a binary after the checksum matches. [`dotsync doctor`](/dotsync/reference/commands/#doctor) also tells you when an update is available.
 
-## Stuck downloading?
+Versions before 0.3.0 don't have `update`: run the install script once more to get it. To go back to an earlier release, `dotsync update --version v0.4.0`.
 
-The install script shows a progress bar, gives up on a stalled connection after about 20 seconds, and retries, including once over IPv4. If it keeps failing, check your connection to GitHub's download host, which is separate from `github.com`:
+## If the download stalls
+
+With `curl`, the install script shows a progress bar, abandons a transfer that stays below 1 KB/s for 20 seconds, retries, and finally tries once more over IPv4. If it still fails, test your connection to GitHub's download host, which is separate from `github.com`:
 
 ```sh
 curl -v -o /dev/null https://github.com/pungoyal/dotsync/releases/latest/download/checksums.txt
 ```
 
-If that also hangs (often an IPv6 route or a proxy), try `curl -4 …` to force IPv4, or download the archive from the [releases page](https://github.com/pungoyal/dotsync/releases/latest) in a browser.
+If that hangs too (often a broken IPv6 route, or a proxy), try it again with `curl -4`, or download the archive from the [releases page](https://github.com/pungoyal/dotsync/releases/latest) in a browser.
 
 ## Next
 
