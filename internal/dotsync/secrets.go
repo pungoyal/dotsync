@@ -65,8 +65,13 @@ func secretPathReason(path string) string {
 func secretContentReason(data []byte) string {
 	sops := encryption(data) == "sops"
 	for _, line := range splitLines(data) {
-		if bytes.Contains(line, allowMarker) || sops && bytes.Contains(line, sopsValue) {
+		if bytes.Contains(line, allowMarker) {
 			continue
+		}
+		if sops {
+			// Remove only the encrypted values: anything else on the line (keys, comments,
+			// unencrypted values, or everything in a minified file) is still scanned.
+			line = sopsValue.ReplaceAll(line, nil)
 		}
 		for _, r := range secretContent {
 			if r.re.Match(line) {
@@ -101,18 +106,20 @@ func secretReason(path string, o *Obj) string {
 
 var (
 	ageBinaryHeader = []byte("age-encryption.org/v1\n")
+	ageHeaderMAC    = []byte("\n--- ")
 	ageArmorBegin   = []byte("-----BEGIN AGE ENCRYPTED FILE-----")
 	ageArmorEnd     = []byte("-----END AGE ENCRYPTED FILE-----")
 	base64Line      = regexp.MustCompile(`^[A-Za-z0-9+/]*={0,2}$`)
 	// sops writes an encrypted MAC into every file it encrypts, in each of its formats.
 	sopsMAC   = regexp.MustCompile(`(?m)(?:"mac"\s*:\s*"|^\s*mac:\s*|^\s*mac\s*=\s*"?|^sops_mac=)ENC\[AES256_GCM,`)
-	sopsValue = []byte("ENC[AES256_GCM,")
+	sopsValue = regexp.MustCompile(`ENC\[AES256_GCM,[^\]]*\]`)
 )
 
 // encryption reports "age" when data is entirely age ciphertext, "sops" when it's a
 // sops-encrypted file, or "".
 func encryption(data []byte) string {
-	if bytes.HasPrefix(data, ageBinaryHeader) {
+	// Binary age: the version line, recipient stanzas, then the header MAC line ("--- …").
+	if bytes.HasPrefix(data, ageBinaryHeader) && bytes.Contains(data[:min(len(data), 64<<10)], ageHeaderMAC) {
 		return "age"
 	}
 	if t := bytes.TrimSpace(data); bytes.HasPrefix(t, ageArmorBegin) && bytes.HasSuffix(t, ageArmorEnd) {

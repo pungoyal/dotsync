@@ -770,7 +770,12 @@ func TestEncryptedFiles(t *testing.T) {
 		{"app/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "sops", false},
 		{".env", "API_KEY=ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]\nsops_mac=ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]\n", "sops", false},
 		{"secrets/prod.env.age", ageArmored, "age", false},
-		{"secrets/prod.env.age", "age-encryption.org/v1\n-> X25519 abc\n\x00\xff", "age", false},
+		{"secrets/prod.env.age", "age-encryption.org/v1\n-> X25519 abc\nZGVm\n--- bWFj\n\x00\xff", "age", false},
+		// The age header alone isn't enough: plaintext after it is scanned (and the path refused).
+		{"secrets/prod.env.age", "age-encryption.org/v1\npassword = hunter2!xyz\n", "", true},
+		// In sops files only the ENC[…] values are skipped: a plaintext secret on the same line
+		// (e.g. a minified JSON file) is still found.
+		{".config/mise/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","token":"ghp_` + strings.Repeat("a", 36) + `","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "sops", true},
 		// sops leaves keys and comments readable; those are still scanned.
 		{".config/mise/.env.yaml", "# token: " + "ghp_" + strings.Repeat("a", 36) + "\n" + sopsYAML, "sops", true},
 		// ENC[…] lines are only skipped in real sops files.
