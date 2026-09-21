@@ -83,8 +83,9 @@ func lastLine(s string) string {
 	return "unknown error"
 }
 
-func configureRepo(g *Git) error {
-	settings := [][2]string{
+// repoSettings are the git settings dotsync needs in its cache clone.
+func repoSettings() [][2]string {
+	return [][2]string{
 		{"user.name", "dotsync (" + hostname() + ")"},
 		{"user.email", "dotsync@" + hostname()},
 		{"commit.gpgsign", "false"}, // an agent cannot answer a pinentry prompt
@@ -98,7 +99,33 @@ func configureRepo(g *Git) error {
 		// No disk writes when nothing changed.
 		{"core.logAllRefUpdates", "false"},
 	}
-	for _, kv := range settings {
+}
+
+// cloneConfigArgs applies repoSettings at clone time, saving a git process per setting.
+func cloneConfigArgs() []string {
+	var args []string
+	for _, kv := range repoSettings() {
+		args = append(args, "-c", kv[0]+"="+kv[1])
+	}
+	return args
+}
+
+// configureRepo applies repoSettings, running `git config` only for the ones that differ.
+func configureRepo(g *Git) error {
+	out, err := g.Must("config", "--local", "--null", "--list")
+	if err != nil {
+		return err
+	}
+	have := map[string]string{}
+	for _, item := range strings.Split(out, "\x00") {
+		if k, v, ok := strings.Cut(item, "\n"); ok {
+			have[strings.ToLower(k)] = v // the last value wins, as it does for git
+		}
+	}
+	for _, kv := range repoSettings() {
+		if v, ok := have[strings.ToLower(kv[0])]; ok && v == kv[1] {
+			continue
+		}
 		if _, err := g.Must("config", kv[0], kv[1]); err != nil {
 			return err
 		}

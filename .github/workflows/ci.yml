@@ -27,8 +27,19 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version: ${{ matrix.go }}
+          cache: false
+      # setup-go's built-in cache uses one key per OS and Go version, so every job on the same
+      # runner shares a single immutable entry saved by whichever job finished first (and missing
+      # this job's race/fuzz/cross builds). Keep one per job instead.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          key: gobuild-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go${{ steps.go.outputs.go-version }}
       - run: go vet ./...
       - run: go test -race -count=1 -coverprofile=coverage.out ./...
       - run: go tool cover -func=coverage.out | tail -1
@@ -64,21 +75,48 @@ jobs:
       - name: actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
+  fuzz-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.list.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          targets=$(grep -ho '^func Fuzz[A-Za-z0-9_]*' internal/dotsync/*_test.go | cut -d' ' -f2 | jq -Rsc 'split("\n") | map(select(. != ""))')
+          test "$targets" != "[]"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  # One job per target: they run side by side instead of back to back, each still getting a
+  # full 30s on its own runner.
   fuzz:
-    name: fuzz (short)
+    name: fuzz (${{ matrix.target }})
+    needs: fuzz-targets
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version: stable
-      - name: fuzz each target for 30s
-        run: |
-          for f in $(go test -list '^Fuzz' ./internal/dotsync | grep '^Fuzz'); do
-            go test -run='^$' -fuzz="^$f\$" -fuzztime=30s ./internal/dotsync
-          done
+          cache: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          key: gobuild-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go${{ steps.go.outputs.go-version }}
+      - run: go test -run='^$' -fuzz="^${TARGET}\$" -fuzztime=30s ./internal/dotsync
+        env:
+          TARGET: ${{ matrix.target }}
 
   vulncheck:
     runs-on: ubuntu-latest
@@ -100,8 +138,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version: stable
+          cache: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          key: gobuild-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go${{ steps.go.outputs.go-version }}
       - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
