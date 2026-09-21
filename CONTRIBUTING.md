@@ -117,6 +117,6 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 
 Release PRs get the same checks as any other PR. **Only merge one once they have passed.** release-please opens the release PR as the repository's GitHub App (`vars.RELEASE_APP_CLIENT_ID`, `secrets.RELEASE_APP_PRIVATE_KEY`), so its checks run and show like any other PR's. Without the app, the PR is opened by `github-actions[bot]`, whose `pull_request` runs GitHub holds for approval; the release workflow then dispatches CI and CodeQL onto the release PR instead, and they report their results as commit statuses (`ci` and `codeql`), which the PR shows.
 
-The `ci ok` job summarizes the whole CI workflow in one check, the one to require in branch protection.
+The `ci ok` job summarizes the whole CI workflow in one check. It is required for merging to `main`.
 
 No one builds or uploads release artifacts by hand. Maintainers can re-run the build for an existing tag from the *release* workflow's "Run workflow" button.
