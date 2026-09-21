@@ -377,7 +377,7 @@ func TestSecretsAreNotUploaded(t *testing.T) {
 	// A secret added later to a managed file is held back and reported.
 	a.write(".zshrc", "alias ll='ls -l'\n")
 	a.ok("add", a.path(".zshrc"))
-	a.write(".zshrc", "export GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789\n")
+	a.write(".zshrc", "export GITHUB_TOKEN=ghp_"+strings.Repeat("x", 36)+"\n")
 	_, out := a.run("sync")
 	if !strings.Contains(out, "BLOCKED") {
 		t.Fatalf("expected BLOCKED:\n%s", out)

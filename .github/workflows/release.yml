@@ -33,6 +33,9 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
+          # Optional: a fine-grained PAT (contents + pull requests: read/write) lets CI run on the
+          # release PR automatically; PRs opened with GITHUB_TOKEN need their checks approved.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
