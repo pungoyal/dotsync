@@ -28,6 +28,12 @@ type Config struct {
 	// BackupRetentionDays: backups older than this are deleted, except the most recent copy of
 	// each file. nil means the default (90); 0 keeps everything.
 	BackupRetentionDays *int `json:"backup_retention_days,omitempty"`
+	// Notifications: false turns off the background agent's desktop notifications. nil means on.
+	Notifications *bool `json:"notifications,omitempty"`
+}
+
+func (c *Config) notificationsOn() bool {
+	return c == nil || c.Notifications == nil || *c.Notifications
 }
 
 const defaultBackupRetentionDays = 90

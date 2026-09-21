@@ -527,8 +527,11 @@ func checkNewSecrets(c *Ctx, path, kind string, ignore []string) error {
 	return nil
 }
 
+// findEntry finds the entry named by a source or a path. Entries for different operating systems
+// may share a target; a path then names the one for this OS, if there is one.
 func findEntry(c *Ctx, m *Manifest, needle string) map[string]any {
 	path := absPath(needle)
+	var other map[string]any
 	for _, raw := range m.Entries {
 		src := rawSource(raw)
 		if src == "" {
@@ -538,10 +541,15 @@ func findEntry(c *Ctx, m *Manifest, needle string) map[string]any {
 			return raw
 		}
 		if t, err := expandTarget(str(raw["target"]), c.Paths); err == nil && t == path {
-			return raw
+			if appliesHere(raw) {
+				return raw
+			}
+			if other == nil {
+				other = raw
+			}
 		}
 	}
-	return nil
+	return other
 }
 
 func queueOps(c *Ctx, needles []string, noSync bool, mk func(raw map[string]any) (*Op, string)) (int, error) {
@@ -1061,8 +1069,11 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	printResult(c, res)
 	code := resultCode(res)
-	if res.Counts[actDownload] > 0 {
-		c.say("existing local files that were replaced are saved under %s", tilde(c.Paths.Backups))
+	for _, it := range res.Items {
+		if it.Action == actDownload && strings.HasPrefix(it.Note, "previous version saved to ") {
+			c.say("existing local files that were replaced are saved under %s", tilde(c.Paths.Backups))
+			break
+		}
 	}
 	if !*noAgent {
 		msg, err := agentInstall(c)

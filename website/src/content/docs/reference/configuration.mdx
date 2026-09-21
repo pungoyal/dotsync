@@ -23,7 +23,8 @@ import ref from '../../../data/reference.json';
   "interval": 600,
   "exclude": ["karabiner/karabiner.json"],
   "on_existing": "conflict",
-  "backup_retention_days": 30
+  "backup_retention_days": 30,
+  "notifications": false
 }
 ```
 
@@ -35,5 +36,6 @@ import ref from '../../../data/reference.json';
 | `exclude` | `[]` | sources of manifest entries this machine doesn't manage. Their local files are left alone. Change with [`dotsync exclude` and `include`](/dotsync/guides/differences/#skip-an-entry-on-one-machine) |
 | `on_existing` | `"remote"` | what happens the first time an entry syncs here and a **different** local file already exists. `"remote"` backs it up and installs the shared version; `"conflict"` leaves it untouched and reports a conflict. `init --keep-existing` sets `"conflict"`; to go back, remove the field |
 | `backup_retention_days` | `{ref.defaults.backup_retention_days}` | backups older than this many days are deleted, once a day, **except the most recent backup of each file**, which is always kept. `0` keeps everything |
+| `notifications` | `true` | `false` turns off the background agent's [desktop notifications](/dotsync/guides/background-agent/#logs-and-notifications) on this machine |
 
 The file is only readable by you (mode `0600`). If it isn't valid JSON, every command stops with an error naming the file.

@@ -41,7 +41,16 @@ Add an OS-specific entry **on a machine running that OS**, so the file is upload
 
 ## A different file per OS
 
-To have, say, one `alacritty.toml` on your Macs and another on your Linux machines, use two entries with the **same target**, different sources, and one OS each:
+To have, say, one `alacritty.toml` on your Macs and another on your Linux machines, use two entries with the **same target**, different sources, and one OS each. Add each one on a machine running its OS, so its file is uploaded straight away:
+
+```sh
+# on a Mac
+dotsync add ~/.config/alacritty/alacritty.toml --source alacritty/macos.toml --os darwin
+# on a Linux machine
+dotsync add ~/.config/alacritty/alacritty.toml --source alacritty/linux.toml --os linux
+```
+
+The manifest then holds:
 
 ```json title="manifest.json (excerpt)"
 {
@@ -58,7 +67,9 @@ To have, say, one `alacritty.toml` on your Macs and another on your Linux machin
 }
 ```
 
-Each machine only manages the entry for its own OS, so the two never meet. `dotsync add` refuses a second entry for a target that's already managed, even for another OS, so create the first entry with `dotsync add … --source alacritty/macos.toml --os darwin` on a Mac, then add the second [by hand](/dotsync/guides/manage-files/#edit-the-manifest-by-hand) in a clone of your repository and push. The first Linux machine to sync uploads its file.
+Each machine only manages the entry for its own OS, so the two never meet. Two entries can only share a target when their OS lists don't overlap. On each machine, the path names the entry for that machine's OS, so `dotsync set ~/.config/alacritty/alacritty.toml …` changes the right one; use the source to change the other.
+
+Versions of dotsync before this was possible refuse the second `add`. With those, add the second entry to `manifest.json` [by hand](/dotsync/guides/manage-files/#edit-the-manifest-by-hand); the first matching machine to sync uploads its file.
 
 ## Skip an entry on one machine
 

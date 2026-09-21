@@ -73,12 +73,34 @@ func (g *Git) Must(args ...string) (string, error) {
 	return strings.TrimSpace(r.Stdout), nil
 }
 
+// gitBoilerplate are lines git prints after the actual error when it can't reach a remote over
+// SSH ("…: Could not resolve hostname …", then these); they say nothing about the cause.
+var gitBoilerplate = []string{
+	"fatal: Could not read from remote repository.",
+	"Please make sure you have the correct access rights",
+	"and the repository exists.",
+}
+
+// lastLine is the last informative line of a command's output: the error itself, not git's
+// generic advice after it.
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
+	fallback := ""
 	for i := len(lines) - 1; i >= 0; i-- {
-		if l := strings.TrimSpace(lines[i]); l != "" {
-			return l
+		l := strings.TrimSpace(lines[i])
+		if l == "" {
+			continue
 		}
+		if containsStr(gitBoilerplate, l) {
+			if fallback == "" {
+				fallback = l
+			}
+			continue
+		}
+		return l
+	}
+	if fallback != "" {
+		return fallback
 	}
 	return "unknown error"
 }

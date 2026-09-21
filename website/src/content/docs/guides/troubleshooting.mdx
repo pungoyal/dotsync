@@ -14,11 +14,11 @@ dotsync doctor
   ✓ configuration: ~/.config/dotsync/config.json
       remote git@github.com:you/dotfiles.git, branch main
   ✗ remote not reachable: github.com rejected the SSH key, or no key is available to git
-      and the repository exists.
+      git@github.com: Permission denied (publickey).
       → add your key to ssh-agent (ssh-add) and check with: ssh -T git@github.com; see https://pungoyal.github.io/dotsync/guides/background-agent/#git-access-without-prompts
   ✓ background agent: systemd timer (active)
   ! last sync 2m0s ago could not reach the remote
-      and the repository exists.
+      git@github.com: Permission denied (publickey).
   ✓ 12 managed entries, 148 files
   · backups: 6 file(s), 41.2 KiB in ~/.local/state/dotsync/backups (older than 90 days are pruned)
 
@@ -28,7 +28,7 @@ Some checks failed; see the → lines above.
 export const offline = `
 $ dotsync sync
   waiting   ~/.gitconfig  (will be sent when the remote is reachable)
-dotsync: 1 waiting — remote unreachable (and the repository exists.)
+dotsync: 1 waiting — remote unreachable (ssh: Could not resolve hostname github.com: nodename nor servname provided, or not known)
 `;
 
 Start with **`dotsync doctor`**. It checks git, your configuration, the remote (reached exactly as the background agent reaches it), the agent, the last sync and your managed files, and prints a `→` line with the fix for each problem:
@@ -43,7 +43,7 @@ Start with **`dotsync doctor`**. It checks git, your configuration, the remote (
 
 <Terminal code={offline} />
 
-dotsync shows the **last line** of git's error, which for SSH remotes is usually just *and the repository exists.* When dotsync recognizes the cause, `status` and `doctor` print it underneath with a `→` fix, and the agent sends a desktop notification. To see git's whole message, fetch by hand:
+dotsync shows the line of git's error that names the cause, leaving out the generic advice git prints after it. When dotsync recognizes the cause, `status` and `doctor` print it underneath with a `→` fix, and the agent sends a desktop notification. To see git's whole message, fetch by hand:
 
 ```sh
 git -C ~/.local/share/dotsync/repo fetch

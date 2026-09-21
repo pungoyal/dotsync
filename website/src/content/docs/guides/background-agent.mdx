@@ -196,7 +196,7 @@ Check with `dotsync doctor`, which reaches the remote exactly as the agent does.
 | `~/.local/state/dotsync/agent.log` | anything the job printed, with launchd and cron. dotsync prints nothing with `-q` unless a sync fails outright |
 | `journalctl --user -u dotsync` | the same, with systemd |
 
-The agent posts a desktop notification when **a new conflict** appears, and when **git starts failing** in a way you need to fix. It notifies once, not on every run. To silence them, turn off notifications for Script Editor or terminal-notifier in macOS's System Settings, or for dotsync in your Linux desktop's settings. The `DOTSYNC_NO_NOTIFY` environment variable turns them off too, but only for runs that inherit it, such as `dotsync sync -q` from your own scheduler: the environment dotsync writes into its own job doesn't include it.
+The agent posts a desktop notification when **a new conflict** appears, and when **git starts failing** in a way you need to fix. It notifies once, not on every run. To turn notifications off on a machine, set `"notifications": false` in its [configuration](/dotsync/reference/configuration/); the next sync respects it. The `DOTSYNC_NO_NOTIFY` environment variable also turns them off, for runs that inherit it.
 
 - **Linux:** through `notify-send`, with the dotsync icon.
 - **macOS:** through Notification Center, with the Script Editor icon. Install [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`) and dotsync uses it to show its own icon.

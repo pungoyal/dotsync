@@ -11,7 +11,7 @@ description: The environment variables dotsync reads, the ones it sets for git, 
 | `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` | where dotsync keeps its [own files](/dotsync/reference/files/), when set to an absolute path. `XDG_CONFIG_HOME` also locates the systemd user units |
 | `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, and any other variable | usable at the start of a [target](/dotsync/reference/manifest/#targets), as `$VAR/…` or `${VAR}/…` |
 | `DOTSYNC_HOSTNAME` | the machine's name in commit messages, commit authors and `status`. Default: the hostname, up to the first dot |
-| `DOTSYNC_NO_NOTIFY` | any value turns off desktop notifications. The background agent's environment doesn't include it; see [notifications](/dotsync/guides/background-agent/#logs-and-notifications) |
+| `DOTSYNC_NO_NOTIFY` | any value turns off desktop notifications for that run. To turn them off for the background agent, set [`notifications`](/dotsync/reference/configuration/) to `false` instead |
 | `GIT_SSH_COMMAND` | used as it is, if set. Otherwise dotsync runs ssh as `ssh -o BatchMode=yes -o ConnectTimeout=15`, so it never prompts |
 | `GITHUB_TOKEN` | sent to the GitHub API by `update` and `doctor` when they look up the latest release, to avoid its rate limit |
 | `PATH` | where dotsync finds `git`, `gh`, `launchctl`, `systemctl`, `crontab`, and the notification programs. `agent install` writes it into the agent's definition |

@@ -95,6 +95,7 @@ To stop seeing them, ignore them: `dotsync set ~/.config/gh --ignore hosts.yml`.
 - paths **outside your home directory**, and your home directory itself
 - dotsync's own directories: `~/.config/dotsync`, `~/.local/share/dotsync` and `~/.local/state/dotsync`
 - anything that isn't a regular file or a directory, such as a socket
+- a path that's already managed, unless both entries are limited to [different operating systems](/dotsync/guides/differences/#a-different-file-per-os)
 - a path **inside** a managed directory, or a directory **containing** a managed path
 - a source already used by another entry, or one that overlaps another source
 - files that look like **secrets**; see [Keep secrets out](/dotsync/guides/secrets/)
@@ -143,7 +144,7 @@ Every command on this page works without a network connection. The change is que
 
 ## Edit the manifest by hand
 
-You can also edit `manifest.json` directly in any clone of your dotfiles repository, commit and push. That's handy for bulk changes, and for the few things the commands don't do, such as [two entries for the same path on different systems](/dotsync/guides/differences/#a-different-file-per-os). Machines pick the change up on their next sync. The [manifest reference](/dotsync/reference/manifest/) lists every field.
+You can also edit `manifest.json` directly in any clone of your dotfiles repository, commit and push. That's handy for bulk changes. Machines pick the change up on their next sync. The [manifest reference](/dotsync/reference/manifest/) lists every field.
 
 <Aside type="caution">
 Use your own clone, not dotsync's cache clone in `~/.local/share/dotsync/repo`. dotsync resets that one whenever it needs to, discarding anything you changed there.
