@@ -235,11 +235,9 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 	return 0, nil
 }
 
-// miseAgeValue matches a mise env value stored encrypted in the config: KEY = { age = { value = "…" } }.
-var miseAgeValue = regexp.MustCompile(`=\s*\{\s*age\s*=\s*\{`)
-
 // needsAgeKey lists managed files (as displayed) whose content can only be read with an age key:
-// age files, sops files with age recipients, and mise configs with age-encrypted values.
+// age files and sops files with age recipients. Like the secret rules, it knows file formats, not
+// the tools that write them.
 func needsAgeKey(p *Plan) []string {
 	var out []string
 	for _, it := range p.Items {
@@ -251,34 +249,31 @@ func needsAgeKey(p *Plan) []string {
 		}
 		switch encryption(data) {
 		case "age":
+			out = append(out, it.Display())
 		case "sops":
-			if !sopsAgeRecipient.Match(data) {
-				continue // KMS, PGP or Vault: not ours to check
-			}
-		default:
-			if !miseAgeValue.Match(data) {
-				continue
+			if sopsAgeRecipient.Match(data) { // KMS, PGP or Vault keys aren't ours to check
+				out = append(out, it.Display())
 			}
 		}
-		out = append(out, it.Display())
 	}
 	return out
 }
 
 var sopsAgeRecipient = regexp.MustCompile(`recipient"?\s*[:=]\s*"?age1`)
 
-// ageKeyFile returns where this machine keeps an age key for mise or sops, or "".
+// ageKeyFile returns where this machine keeps an age key, or "". sops's own locations come first;
+// mise's (which it uses for sops files too) are included because the guide recommends them.
 func ageKeyFile() string {
-	for _, v := range []string{"MISE_AGE_KEY", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD"} {
+	for _, v := range []string{"SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE"} {
 		if os.Getenv(v) != "" {
 			return "$" + v
 		}
 	}
 	cfg := mustEnvDir("XDG_CONFIG_HOME")
 	for _, f := range []string{
-		filepath.Join(cfg, "mise", "age.txt"),
 		filepath.Join(cfg, "sops", "age", "keys.txt"),
 		filepath.Join(homeDir(), "Library", "Application Support", "sops", "age", "keys.txt"),
+		filepath.Join(cfg, "mise", "age.txt"),
 	} {
 		if _, err := os.Stat(f); err == nil {
 			return f

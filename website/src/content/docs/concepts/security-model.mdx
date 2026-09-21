@@ -30,6 +30,8 @@ description: What dotsync trusts, what it protects against, and how secrets and 
 
 Encryption means distributing a key to every machine. That key becomes a new secret to bootstrap, rotate and lose, and it would be a single point of compromise. Keeping secrets **out** of the repository is simpler and fails safe. Use a password manager or the OS keychain for secrets, and let dotsync handle configuration.
 
+dotsync doesn't encrypt anything itself, but it doesn't stand in the way if **you** do. Files already encrypted with [age](https://age-encryption.org) or [sops](https://getsops.io), for example by mise, are ciphertext, so they sync like any other file. The key problem above is then yours to manage, and dotsync keeps its side of it: it refuses to sync age private keys, and `dotsync doctor` tells you when a machine has encrypted files but no key. dotsync recognizes **file formats**, not the tools that write them, so this works the same whichever tool you use. See [encrypted files](/dotsync/reference/secret-rules/#encrypted-files).
+
 ## Reporting a vulnerability
 
 Please report privately through [GitHub's private vulnerability reporting](https://github.com/pungoyal/dotsync/security/advisories/new). The [security policy](https://github.com/pungoyal/dotsync/security/policy) explains what's in scope and the response times.

@@ -791,7 +791,7 @@ func TestEncryptedFiles(t *testing.T) {
 }
 
 func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
-	for _, v := range []string{"MISE_AGE_KEY", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD"} {
+	for _, v := range []string{"SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE"} {
 		t.Setenv(v, "")
 	}
 	w := newWorld(t)

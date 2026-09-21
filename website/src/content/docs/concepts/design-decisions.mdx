@@ -33,7 +33,7 @@ Templates make files differ per machine by design, which is the opposite of what
 
 ## Keep secrets out, rather than encrypting them
 
-See the [security model](/dotsync/concepts/security-model/#why-not-encrypt-secrets-into-the-repository).
+dotsync never encrypts. Files you encrypt yourself with age or sops sync as the ciphertext they are, and the age key that opens them is kept out like any other secret. See the [security model](/dotsync/concepts/security-model/#why-not-encrypt-secrets-into-the-repository).
 
 ## Safe defaults, explicit overrides
 

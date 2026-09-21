@@ -46,6 +46,20 @@ dotsync syncs files. It never runs commands. When `config.toml` arrives on anoth
   run = "mise install"
   ```
 
+## Avoiding conflicts from `mise use -g`
+
+`mise use -g` rewrites `~/.config/mise/config.toml`. If two machines change it before they sync, dotsync reports a [conflict](/dotsync/guides/resolve-conflicts/): it doesn't merge, even when the changes are on different lines. Nothing is lost, but you'll have to pick a version. To make this rarer:
+
+- **Run `dotsync sync` after `mise use -g`**, so the change reaches the other machines straight away rather than within five minutes.
+- **Keep tools for one machine out of the shared file.** mise loads every `conf.d/*.toml` file, so give each machine a local file that isn't synced:
+
+  ```sh
+  dotsync set ~/.config/mise --ignore local.toml
+  mise use --path ~/.config/mise/conf.d/local.toml terraform@1.9   # only on this machine
+  ```
+
+- **If you do get a conflict**, `dotsync diff ~/.config/mise/config.toml` shows both sides. Edit the local file so it has both changes, then `dotsync resolve ~/.config/mise/config.toml --keep local`.
+
 ## Per-OS tools
 
 Keep one shared `config.toml` and limit tools to the systems that need them with mise's `os` option, rather than keeping one config per OS:
@@ -112,7 +126,7 @@ dotsync recognizes sops files and syncs them even though the name looks like a s
 
 Both approaches depend on an age private key, by default `~/.config/mise/age.txt`. mise can also use your SSH key. Anyone with that key and a copy of the repository can read every secret, so it has to stay off the repository. dotsync refuses it by path (`.config/mise/age.txt`, `.config/sops/age/*`) and by content (`AGE-SECRET-KEY-1…`).
 
-Copy it to each new machine yourself, once. Until you do, `dotsync doctor` on that machine warns that managed files are encrypted but there's no age key:
+Copy it to each new machine yourself, once. Until you do, `dotsync doctor` on that machine warns about any age or sops files it can't find a key for. It doesn't read mise's own config syntax, so it can't tell you about values encrypted with `mise set --age-encrypt`; those show up as missing variables in `mise env` instead:
 
 <Steps>
 
