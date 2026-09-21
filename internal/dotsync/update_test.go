@@ -193,7 +193,7 @@ func TestPackagedAt(t *testing.T) {
 func TestUpdateDefersToPackageManager(t *testing.T) {
 	newWorld(t).machine("alpha").activate()
 	fakeRelease(t, "v0.3.0", []byte("new binary"), false)
-	prefix := t.TempDir()
+	prefix, _ := filepath.EvalSymlinks(t.TempDir()) // macOS: /var is a link to /private/var
 	exe := filepath.Join(prefix, "Cellar", "dotsync", "0.2.0", "bin", "dotsync")
 	os.MkdirAll(filepath.Dir(exe), 0o755)
 	os.WriteFile(exe, []byte("old binary"), 0o755)
