@@ -374,8 +374,7 @@ func cmdAgent(args []string, stdout, stderr io.Writer) (int, error) {
 		return 2, err
 	}
 	if len(pos) != 1 {
-		fs.Usage()
-		return 2, errors.New("expected install, uninstall or status")
+		return usageError(fs, "expected install, uninstall or status")
 	}
 	c, err := newCtx(true, false, stdout, stderr)
 	if err != nil {

@@ -40,21 +40,21 @@ func fakeRelease(t *testing.T, tag string, binary []byte, corrupt bool) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/" + releaseRepo + "/releases/latest":
+		case "/repos/" + releases.repo + "/releases/latest":
 			fmt.Fprintf(w, `{"tag_name": %q}`, tag)
-		case "/" + releaseRepo + "/releases/download/" + tag + "/" + name:
+		case "/" + releases.repo + "/releases/download/" + tag + "/" + name:
 			w.Write(archive.Bytes())
-		case "/" + releaseRepo + "/releases/download/" + tag + "/checksums.txt":
+		case "/" + releases.repo + "/releases/download/" + tag + "/checksums.txt":
 			w.Write([]byte(checksums))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	t.Cleanup(srv.Close)
-	oldAPI, oldDL, oldVerify, oldVersion := updateAPIBase, updateDownloadBase, updateVerifyWithGH, Version
-	updateAPIBase, updateDownloadBase, updateVerifyWithGH = srv.URL, srv.URL, false
+	oldReleases, oldVersion := releases, Version
+	releases.api, releases.download, releases.verifyWithGH = srv.URL, srv.URL, false
 	t.Cleanup(func() {
-		updateAPIBase, updateDownloadBase, updateVerifyWithGH, Version = oldAPI, oldDL, oldVerify, oldVersion
+		releases, Version = oldReleases, oldVersion
 	})
 }
 

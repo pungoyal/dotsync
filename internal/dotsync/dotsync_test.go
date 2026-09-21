@@ -1341,3 +1341,38 @@ func TestAgentDefinitionIgnoresCapturedPath(t *testing.T) {
 		t.Error("cron lines differing only in PATH should match")
 	}
 }
+
+func TestCommandTable(t *testing.T) {
+	var out, errOut strings.Builder
+	if code := Run(nil, &out, &errOut); code != 0 {
+		t.Fatalf("usage exit %d", code)
+	}
+	seen := map[string]bool{}
+	for _, g := range commandGroups {
+		for _, cmd := range g.commands {
+			for _, name := range append([]string{cmd.name}, cmd.aliases...) {
+				if seen[name] {
+					t.Errorf("%q is defined twice", name)
+				}
+				seen[name] = true
+				if findCommand(name) == nil || findCommand(name).name != cmd.name {
+					t.Errorf("%q doesn't dispatch to %s", name, cmd.name)
+				}
+			}
+			if cmd.summary == "" || cmd.run == nil {
+				t.Errorf("%s needs a summary and a run function", cmd.name)
+			}
+			if !strings.Contains(out.String(), "  "+cmd.name) {
+				t.Errorf("usage doesn't list %s", cmd.name)
+			}
+			// `help <command>` shows that command's options and succeeds.
+			var hOut, hErr strings.Builder
+			if code := Run([]string{"help", cmd.name}, &hOut, &hErr); code != 0 || !strings.Contains(hErr.String(), "usage: dotsync "+cmd.name) {
+				t.Errorf("help %s: exit %d, %q", cmd.name, code, hErr.String())
+			}
+		}
+	}
+	if code := Run([]string{"frobnicate"}, &out, &errOut); code != 2 || !strings.Contains(errOut.String(), "unknown command") {
+		t.Errorf("unknown command: exit %d, %q", code, errOut.String())
+	}
+}

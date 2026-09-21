@@ -71,87 +71,122 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 		return 2, err
 	}
 	d := &doctor{}
-	defer func() {
-		fmt.Fprintln(stdout, "dotsync doctor")
-		d.print(stdout)
-		switch d.worst() {
-		case checkFail:
-			fmt.Fprintln(stdout, "\nSome checks failed; see the → lines above.")
-		case checkWarn:
-			fmt.Fprintln(stdout, "\nWorking, with warnings.")
-		default:
-			fmt.Fprintln(stdout, "\nEverything looks good.")
-		}
-	}()
-
-	d.add(checkOK, versionString(), "", "")
-	if cur := currentVersion(); cur != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if latest, err := latestRelease(ctx); err == nil {
-			l, _ := parseSemver(latest)
-			if c, _ := parseSemver(cur); semverLess(c, l) {
-				d.add(checkInfo, "update available: "+cur+" → "+strings.TrimPrefix(latest, "v"), "", "dotsync update")
-			}
-		}
-		cancel()
-	}
-
-	// git
-	if out, err := exec.Command("git", "--version").Output(); err != nil {
-		d.add(checkFail, "git is not installed or not on PATH", "", "install git 2.20 or newer")
+	d.run()
+	fmt.Fprintln(stdout, "dotsync doctor")
+	d.print(stdout)
+	switch d.worst() {
+	case checkFail:
+		fmt.Fprintln(stdout, "\nSome checks failed; see the → lines above.")
 		return 1, nil
-	} else {
-		v := strings.TrimSpace(string(out))
-		m := gitVersionRx.FindStringSubmatch(v)
-		major, _ := strconv.Atoi(m[1])
-		minor, _ := strconv.Atoi(m[2])
-		if major < 2 || (major == 2 && minor < 20) {
-			d.add(checkFail, v, "dotsync needs git 2.20 or newer", "upgrade git")
-		} else {
-			d.add(checkOK, v, "", "")
+	case checkWarn:
+		fmt.Fprintln(stdout, "\nWorking, with warnings.")
+	default:
+		fmt.Fprintln(stdout, "\nEverything looks good.")
+	}
+	return 0, nil
+}
+
+// run performs the checks in order, stopping where a failure makes the rest meaningless.
+func (d *doctor) run() {
+	d.checkVersion()
+	if !d.checkGit() {
+		return
+	}
+	c := d.checkSetup()
+	if c == nil {
+		return
+	}
+	d.checkRemote(c)
+	d.checkAgent(c)
+	st, err := loadState(c)
+	if err != nil {
+		d.add(checkFail, "state can't be read", err.Error(), "")
+		return
+	}
+	d.checkLastSync(c, st)
+	d.checkFiles(c, st)
+	d.checkBackups(c)
+}
+
+func (d *doctor) checkVersion() {
+	d.add(checkOK, versionString(), "", "")
+	cur := currentVersion()
+	if cur == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if latest, err := latestRelease(ctx); err == nil {
+		l, _ := parseSemver(latest)
+		if c, _ := parseSemver(cur); semverLess(c, l) {
+			d.add(checkInfo, "update available: "+cur+" → "+strings.TrimPrefix(latest, "v"), "", "dotsync update")
 		}
 	}
+}
 
-	// configuration and cache clone
+// checkGit reports whether git is installed; nothing else can be checked without it.
+func (d *doctor) checkGit() bool {
+	out, err := exec.Command("git", "--version").Output()
+	if err != nil {
+		d.add(checkFail, "git is not installed or not on PATH", "", "install git 2.20 or newer")
+		return false
+	}
+	v := strings.TrimSpace(string(out))
+	m := gitVersionRx.FindStringSubmatch(v)
+	major, _ := strconv.Atoi(m[1])
+	minor, _ := strconv.Atoi(m[2])
+	if major < 2 || (major == 2 && minor < 20) {
+		d.add(checkFail, v, "dotsync needs git 2.20 or newer", "upgrade git")
+	} else {
+		d.add(checkOK, v, "", "")
+	}
+	return true
+}
+
+// checkSetup checks the configuration and cache clone, returning a context if they're usable.
+func (d *doctor) checkSetup() *Ctx {
 	c, err := newCtx(false, true, io.Discard, io.Discard)
 	if err != nil {
 		d.add(checkFail, "configuration can't be read", err.Error(), "fix or delete "+tilde(NewPaths().Config)+", then run dotsync init")
-		return 1, nil
+		return nil
 	}
 	if c.Config == nil {
 		d.add(checkFail, "not set up on this machine", "", "dotsync init <url-of-your-private-dotfiles-repo>")
-		return 1, nil
+		return nil
 	}
 	d.add(checkOK, "configuration: "+tilde(c.Paths.Config), fmt.Sprintf("remote %s, branch %s", c.Config.Remote, c.Config.Branch), "")
 	if _, err := os.Stat(filepath.Join(c.Paths.Repo, ".git")); err != nil {
 		d.add(checkFail, "cache clone missing: "+tilde(c.Paths.Repo), "", "dotsync init "+c.Config.Remote)
-		return 1, nil
+		return nil
 	}
 	if url, _ := c.Git.Must("remote", "get-url", "origin"); url != c.Config.Remote {
 		d.add(checkFail, "cache clone points at a different remote", "clone: "+url+"\nconfig: "+c.Config.Remote,
 			"git -C "+tilde(c.Paths.Repo)+" remote set-url origin "+c.Config.Remote)
 	}
+	return c
+}
 
-	// remote reachable without prompts (exactly how the agent will run git)
+// checkRemote checks the remote is reachable without prompts, exactly as the agent runs git.
+func (d *doctor) checkRemote(c *Ctx) {
 	r := c.Git.Try("ls-remote", "--heads", "origin", c.Config.Branch)
+	gp := diagnoseGit(c, r.Stderr)
 	switch {
 	case r.Code == 0 && hasHead(r.Stdout, c.Config.Branch):
 		d.add(checkOK, "remote reachable without prompts", "", "")
 	case r.Code == 0:
 		d.add(checkFail, "remote has no branch '"+c.Config.Branch+"'", "", "check the branch in "+tilde(c.Paths.Config))
-	case diagnoseGit(c, r.Stderr) != nil:
-		gp := diagnoseGit(c, r.Stderr)
+	case gp != nil:
 		d.add(checkFail, "remote not reachable: "+gp.Problem, lastLine(r.Stderr), gp.Fix)
 	default:
 		d.add(checkWarn, "remote unreachable right now", lastLine(r.Stderr), "check your network; changes wait until it's reachable")
 	}
+}
 
-	// background agent
+func (d *doctor) checkAgent(c *Ctx) {
 	status := agentStatus()
-	switch {
-	case strings.Contains(status, "not installed") || strings.Contains(status, "not loaded"):
+	if strings.Contains(status, "not installed") || strings.Contains(status, "not loaded") {
 		d.add(checkFail, "background agent: "+strings.TrimSuffix(status, " (run `dotsync agent install`)"), "", "dotsync agent install")
-	default:
+	} else {
 		d.add(checkOK, "background agent: "+status, "", "")
 		if exe := agentCommand(c)[0]; exe != "" {
 			if _, err := os.Stat(exe); err != nil {
@@ -165,30 +200,29 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 	if _, err := exec.LookPath("dotsync"); err != nil {
 		d.add(checkWarn, "dotsync is not on your PATH", "", "add "+tilde(filepath.Dir(c.Paths.Bin))+" to PATH")
 	}
+}
 
-	// last sync
-	st, err := loadState(c)
-	if err != nil {
-		d.add(checkFail, "state can't be read", err.Error(), "")
-		return 1, nil
+func (d *doctor) checkLastSync(c *Ctx, st *State) {
+	ls := st.LastSync
+	if ls == nil {
+		d.add(checkWarn, "no sync has completed yet", "", "dotsync sync")
+		return
 	}
 	interval := time.Duration(max(c.Config.Interval, 60)) * time.Second
-	if ls := st.LastSync; ls == nil {
-		d.add(checkWarn, "no sync has completed yet", "", "dotsync sync")
-	} else {
-		age := time.Since(lastSyncTime(c, st)).Round(time.Minute)
-		switch {
-		case ls.Outcome == "offline":
-			d.add(checkWarn, fmt.Sprintf("last sync %s ago could not reach the remote", age), ls.FetchError, "")
-		case age > 3*interval && age > time.Hour:
-			d.add(checkWarn, fmt.Sprintf("last sync was %s ago", age), "the agent may not be running", "dotsync agent status; see "+tilde(c.Paths.AgentLog))
-		default:
-			d.add(checkOK, fmt.Sprintf("last sync %s ago (%s)", age, ls.Outcome), "", "")
-		}
+	age := time.Since(lastSyncTime(c, st)).Round(time.Minute)
+	switch {
+	case ls.Outcome == "offline":
+		d.add(checkWarn, fmt.Sprintf("last sync %s ago could not reach the remote", age), ls.FetchError, "")
+	case age > 3*interval && age > time.Hour:
+		d.add(checkWarn, fmt.Sprintf("last sync was %s ago", age), "the agent may not be running", "dotsync agent status; see "+tilde(c.Paths.AgentLog))
+	default:
+		d.add(checkOK, fmt.Sprintf("last sync %s ago (%s)", age, ls.Outcome), "", "")
 	}
+}
 
-	// managed files, planned against the last fetched state (no network, no changes)
-	err = withLock(c, 5*time.Second, func() error {
+// checkFiles plans against the last fetched state: no network, no changes.
+func (d *doctor) checkFiles(c *Ctx, st *State) {
+	err := withLock(c, 5*time.Second, func() error {
 		p, err := buildPlan(c, st, false)
 		if err != nil {
 			return err
@@ -218,19 +252,15 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 	case err != nil:
 		d.add(checkFail, "can't evaluate managed files", err.Error(), "")
 	}
+}
 
-	// backups
+func (d *doctor) checkBackups(c *Ctx) {
 	files, bytes := backupUsage(c.Paths.Backups)
 	keep := "kept forever"
 	if days := c.Config.backupRetention(); days > 0 {
 		keep = fmt.Sprintf("older than %d days are pruned", days)
 	}
 	d.add(checkInfo, fmt.Sprintf("backups: %d file(s), %s in %s (%s)", files, humanBytes(bytes), tilde(c.Paths.Backups), keep), "", "")
-
-	if d.worst() == checkFail {
-		return 1, nil
-	}
-	return 0, nil
 }
 
 func plural(n int, one, many string) string {

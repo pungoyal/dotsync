@@ -29,103 +29,45 @@ func (b *boolFlag) Set(s string) error {
 	return nil
 }
 
+// setFlags are the changes `dotsync set` can make to an entry.
+type setFlags struct {
+	desc, mode, write             string
+	addIgnore, removeIgnore, oses stringList
+	clearIgnore, anyOS, noMode    bool
+	allowSecrets                  boolFlag
+}
+
 func cmdSet(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("set", "<path|source> [changes]", stderr)
-	desc := fs.String("d", "", "new description")
-	fs.StringVar(desc, "description", "", "same as -d")
-	var addIgnore, removeIgnore, oses stringList
-	fs.Var(&addIgnore, "ignore", "add an ignore pattern (repeatable)")
-	fs.Var(&removeIgnore, "unignore", "remove an ignore pattern (repeatable)")
-	clearIgnore := fs.Bool("clear-ignore", false, "remove every ignore pattern")
-	fs.Var(&oses, "os", "only manage on this OS: darwin or linux (repeatable; replaces the current list)")
-	anyOS := fs.Bool("any-os", false, "manage on every OS (removes the os restriction)")
-	mode := fs.String("mode", "", `force permissions on every machine, e.g. "0600"`)
-	noMode := fs.Bool("no-mode", false, "stop forcing permissions")
-	write := fs.String("write", "", "how files are replaced: atomic or inplace")
-	var allowSecrets boolFlag
-	fs.Var(&allowSecrets, "allow-secrets", "allow content that looks like credentials (use --allow-secrets=false to undo)")
+	var f setFlags
+	fs.StringVar(&f.desc, "d", "", "new description")
+	fs.StringVar(&f.desc, "description", "", "same as -d")
+	fs.Var(&f.addIgnore, "ignore", "add an ignore pattern (repeatable)")
+	fs.Var(&f.removeIgnore, "unignore", "remove an ignore pattern (repeatable)")
+	fs.BoolVar(&f.clearIgnore, "clear-ignore", false, "remove every ignore pattern")
+	fs.Var(&f.oses, "os", "only manage on this OS: darwin or linux (repeatable; replaces the current list)")
+	fs.BoolVar(&f.anyOS, "any-os", false, "manage on every OS (removes the os restriction)")
+	fs.StringVar(&f.mode, "mode", "", `force permissions on every machine, e.g. "0600"`)
+	fs.BoolVar(&f.noMode, "no-mode", false, "stop forcing permissions")
+	fs.StringVar(&f.write, "write", "", "how files are replaced: atomic or inplace")
+	fs.Var(&f.allowSecrets, "allow-secrets", "allow content that looks like credentials (use --allow-secrets=false to undo)")
 	noSync := fs.Bool("no-sync", false, "only queue the change")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return 2, err
 	}
 	if len(pos) != 1 {
-		fs.Usage()
-		return 2, errors.New("expected exactly one path or source")
+		return usageError(fs, "expected exactly one path or source")
 	}
-
-	op := &Op{ID: newOpID(), Op: "update", Fields: map[string]any{}, Queued: nowISO()}
-	var changes []string
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "d", "description":
-			op.Fields["description"] = *desc
-			changes = append(changes, "description")
-		case "write":
-			op.Fields["write"] = *write
-			changes = append(changes, "write = "+*write)
-		case "mode":
-			op.Fields["mode"] = *mode
-			changes = append(changes, "mode = "+*mode)
-		}
-	})
-	if *noMode {
-		if _, ok := op.Fields["mode"]; ok {
-			return 2, errors.New("--mode and --no-mode are mutually exclusive")
-		}
-		op.Unset = append(op.Unset, "mode")
-		changes = append(changes, "no forced mode")
-	}
-	if len(oses) > 0 && *anyOS {
-		return 2, errors.New("--os and --any-os are mutually exclusive")
-	}
-	if err := validateOS(oses); err != nil {
+	given := map[string]bool{}
+	fs.Visit(func(fl *flag.Flag) { given[fl.Name] = true })
+	op, changes, err := f.op(given)
+	if err != nil {
 		return 2, err
 	}
-	if len(oses) > 0 {
-		list := make([]any, 0, len(oses))
-		for _, o := range oses {
-			list = append(list, o)
-		}
-		op.Fields["os"] = list
-		changes = append(changes, "os = "+strings.Join(oses, ", "))
-	}
-	if *anyOS {
-		op.Unset = append(op.Unset, "os")
-		changes = append(changes, "any OS")
-	}
-	if *clearIgnore {
-		if len(removeIgnore) > 0 {
-			return 2, errors.New("--clear-ignore and --unignore are mutually exclusive")
-		}
-		op.Unset = append(op.Unset, "ignore")
-		changes = append(changes, "no ignore patterns")
-	}
-	for _, p := range addIgnore {
-		if p = strings.Trim(p, "/"); p != "" {
-			op.AddIgnore = append(op.AddIgnore, p)
-		}
-	}
-	op.RemoveIgnore = append(op.RemoveIgnore, removeIgnore...)
-	if len(op.AddIgnore) > 0 {
-		changes = append(changes, "ignore + "+strings.Join(op.AddIgnore, ", "))
-	}
-	if len(op.RemoveIgnore) > 0 {
-		changes = append(changes, "ignore − "+strings.Join(op.RemoveIgnore, ", "))
-	}
-	if allowSecrets.set {
-		if allowSecrets.value {
-			op.Fields["allow_secrets"] = true
-		} else {
-			op.Unset = append(op.Unset, "allow_secrets")
-		}
-		changes = append(changes, fmt.Sprintf("allow_secrets = %v", allowSecrets.value))
-	}
 	if len(changes) == 0 {
-		fs.Usage()
-		return 2, errors.New("nothing to change")
+		return usageError(fs, "nothing to change")
 	}
-
 	c, err := newCtx(true, false, stdout, stderr)
 	if err != nil {
 		return 1, err
@@ -136,6 +78,77 @@ func cmdSet(args []string, stdout, stderr io.Writer) (int, error) {
 	})
 }
 
+// op turns the given flags into an update op, and describes each change for the user.
+func (f *setFlags) op(given map[string]bool) (*Op, []string, error) {
+	op := &Op{ID: newOpID(), Op: "update", Fields: map[string]any{}, Queued: nowISO()}
+	var changes []string
+	field := func(name string, value any, change string) {
+		op.Fields[name] = value
+		changes = append(changes, change)
+	}
+	unset := func(name, change string) {
+		op.Unset = append(op.Unset, name)
+		changes = append(changes, change)
+	}
+	switch {
+	case given["mode"] && f.noMode:
+		return nil, nil, errors.New("--mode and --no-mode are mutually exclusive")
+	case len(f.oses) > 0 && f.anyOS:
+		return nil, nil, errors.New("--os and --any-os are mutually exclusive")
+	case f.clearIgnore && len(f.removeIgnore) > 0:
+		return nil, nil, errors.New("--clear-ignore and --unignore are mutually exclusive")
+	}
+	if err := validateOS(f.oses); err != nil {
+		return nil, nil, err
+	}
+	if given["d"] || given["description"] {
+		field("description", f.desc, "description")
+	}
+	if given["mode"] {
+		field("mode", f.mode, "mode = "+f.mode)
+	}
+	if given["write"] {
+		field("write", f.write, "write = "+f.write)
+	}
+	if f.noMode {
+		unset("mode", "no forced mode")
+	}
+	if len(f.oses) > 0 {
+		list := make([]any, 0, len(f.oses))
+		for _, o := range f.oses {
+			list = append(list, o)
+		}
+		field("os", list, "os = "+strings.Join(f.oses, ", "))
+	}
+	if f.anyOS {
+		unset("os", "any OS")
+	}
+	if f.clearIgnore {
+		unset("ignore", "no ignore patterns")
+	}
+	for _, p := range f.addIgnore {
+		if p = strings.Trim(p, "/"); p != "" {
+			op.AddIgnore = append(op.AddIgnore, p)
+		}
+	}
+	op.RemoveIgnore = append(op.RemoveIgnore, f.removeIgnore...)
+	if len(op.AddIgnore) > 0 {
+		changes = append(changes, "ignore + "+strings.Join(op.AddIgnore, ", "))
+	}
+	if len(op.RemoveIgnore) > 0 {
+		changes = append(changes, "ignore − "+strings.Join(op.RemoveIgnore, ", "))
+	}
+	if f.allowSecrets.set {
+		change := fmt.Sprintf("allow_secrets = %v", f.allowSecrets.value)
+		if f.allowSecrets.value {
+			field("allow_secrets", true, change)
+		} else {
+			unset("allow_secrets", change)
+		}
+	}
+	return op, changes, nil
+}
+
 // cmdDescribe is kept as a shortcut for `set <entry> -d <text>`.
 func cmdDescribe(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("describe", "<path|source> <description>", stderr)
@@ -144,8 +157,7 @@ func cmdDescribe(args []string, stdout, stderr io.Writer) (int, error) {
 		return 2, err
 	}
 	if len(pos) != 2 {
-		fs.Usage()
-		return 2, errors.New("expected a path or source and a description")
+		return usageError(fs, "expected a path or source and a description")
 	}
 	return cmdSet([]string{pos[0], "--description", pos[1]}, stdout, stderr)
 }
@@ -217,10 +229,7 @@ func editExcludes(verb string, args []string, stdout, stderr io.Writer) (int, er
 		if err := writeJSON(c.Paths.Config, c.Config, 0o600); err != nil {
 			return err
 		}
-		if *noSync {
-			return nil
-		}
-		code, err = syncAndReport(c)
+		code, err = syncAfter(c, *noSync)
 		return err
 	})
 	return code, err
