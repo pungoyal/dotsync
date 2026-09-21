@@ -696,6 +696,8 @@ func TestSecretRules(t *testing.T) {
 		".config/app/my-secrets.json": true, ".zsh_history": true, ".env": true,
 		".gnupg/gpg.conf": false, ".gnupg/gpg-agent.conf": false, ".config/secretive/config": false,
 		".ssh/config": false, ".config/fish/config.fish": false,
+		".config/mise/age.txt": true, ".config/sops/age/keys.txt": true,
+		"Library/Application Support/sops/age/keys.txt": true, ".config/mise/config.toml": false,
 	}
 	for rel, want := range paths {
 		if got := secretPathReason(filepath.Join(h, rel)) != ""; got != want {
@@ -711,11 +713,119 @@ func TestSecretRules(t *testing.T) {
 		"set -gx EDITOR nvim":                                                 false,
 		"max_tokens: 4096":                                                    false,
 		"api_key = sk-" + strings.Repeat("x", 30) + " # dotsync:allow-secret": false,
+		fakeAgeKey: true,
+		`DATABASE_URL = "postgres://app:hunter2@db.local/app"`: true,
+		"redis://:s3cret@cache:6379":                           true,
+		`url = "postgres://app:${PGPASSWORD}@db/app"`:          false,
+		`url = "postgres://app:{{ env.PW }}@db/app"`:           false,
+		"git clone ssh://git@github.com/you/repo":              false,
+		"proxy = http://proxy.local:8080/":                     false,
+		"# public key: age1" + strings.Repeat("q", 58):         false,
 	}
 	for line, want := range content {
 		if got := secretContentReason([]byte(line)) != ""; got != want {
 			t.Errorf("secretContentReason(%q) = %v, want %v", line, got, want)
 		}
+	}
+}
+
+// Built at runtime so secret scanners don't flag the test fixtures themselves.
+const sopsYAML = `db_password: ENC[AES256_GCM,data:3q2+7w==,iv:AAAA,tag:BBBB,type:str]
+sops:
+    age:
+        - recipient: age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCg==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-09-21T00:00:00Z"
+    mac: ENC[AES256_GCM,data:bWFj,iv:AAAA,tag:BBBB,type:str]
+    version: 3.9.0
+`
+
+const sopsJSON = `{
+	"api_key": "ENC[AES256_GCM,data:3q2+7w==,iv:AAAA,tag:BBBB,type:str]",
+	"sops": {
+		"lastmodified": "2026-09-21T00:00:00Z",
+		"mac": "ENC[AES256_GCM,data:bWFj,iv:AAAA,tag:BBBB,type:str]",
+		"version": "3.9.0"
+	}
+}
+`
+
+const ageArmored = "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOQ==\n-----END AGE ENCRYPTED FILE-----\n"
+
+func TestEncryptedFiles(t *testing.T) {
+	w := newWorld(t)
+	w.machine("alpha").activate()
+	h := homeDir()
+	file := func(s string) *Obj { return &Obj{Kind: "file", Data: []byte(s)} }
+	for _, c := range []struct {
+		rel, content string
+		enc          string
+		blocked      bool
+	}{
+		{".config/mise/.env.yaml", sopsYAML, "sops", false},
+		{".config/mise/.env.json", sopsJSON, "sops", false},
+		{"app/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "sops", false},
+		{".env", "API_KEY=ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]\nsops_mac=ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]\n", "sops", false},
+		{"secrets/prod.env.age", ageArmored, "age", false},
+		{"secrets/prod.env.age", "age-encryption.org/v1\n-> X25519 abc\nZGVm\n--- bWFj\n\x00\xff", "age", false},
+		// The age header alone isn't enough: plaintext after it is scanned (and the path refused).
+		{"secrets/prod.env.age", "age-encryption.org/v1\npassword = hunter2!xyz\n", "", true},
+		// In sops files only the ENC[…] values are skipped: a plaintext secret on the same line
+		// (e.g. a minified JSON file) is still found.
+		{".config/mise/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","token":"ghp_` + strings.Repeat("a", 36) + `","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "sops", true},
+		// sops leaves keys and comments readable; those are still scanned.
+		{".config/mise/.env.yaml", "# token: " + "ghp_" + strings.Repeat("a", 36) + "\n" + sopsYAML, "sops", true},
+		// ENC[…] lines are only skipped in real sops files.
+		{"notes.txt", "ENC[AES256_GCM,data:x] token: ghp_" + strings.Repeat("a", 36) + "\n", "", true},
+		// Plaintext between age armor lines isn't ciphertext.
+		{"secrets/prod.env.age", "-----BEGIN AGE ENCRYPTED FILE-----\npassword = hunter2!xyz\n-----END AGE ENCRYPTED FILE-----\n", "", true},
+		// Unencrypted files named like secrets are still refused.
+		{".config/mise/.env.json", `{"API_KEY": "abc"}`, "", true},
+	} {
+		o := file(c.content)
+		if got := encryption(o.Data); got != c.enc {
+			t.Errorf("encryption(%s) = %q, want %q", c.rel, got, c.enc)
+		}
+		if got := secretReason(filepath.Join(h, c.rel), o); (got != "") != c.blocked {
+			t.Errorf("secretReason(%s) = %q, want blocked=%v", c.rel, got, c.blocked)
+		}
+	}
+}
+
+func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
+	for _, v := range []string{"SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE"} {
+		t.Setenv(v, "")
+	}
+	w := newWorld(t)
+	a, b := w.machine("alpha"), w.machine("beta")
+	a.init()
+	a.write(".config/mise/config.toml", "[env]\n_.file = \".env.yaml\"\n")
+	a.write(".config/mise/.env.yaml", sopsYAML)
+	a.write(".config/mise/age.txt", fakeAgeKey+"\n")
+	out := a.ok("add", a.path(".config/mise"))
+	if !strings.Contains(out, "1 file(s) under ~/.config/mise look like secrets") || !strings.Contains(out, "age.txt") {
+		t.Fatalf("expected only age.txt to be held back:\n%s", out)
+	}
+	if w.remoteFile("mise/.env.yaml") != sopsYAML {
+		t.Fatal("sops file was not sent")
+	}
+
+	// A machine without the key is told it needs one; once the key is there, the warning goes away.
+	b.init()
+	b.expect(".config/mise/.env.yaml", sopsYAML)
+	if b.exists(".config/mise/age.txt") {
+		t.Fatal("age key reached another machine")
+	}
+	_, out = b.run("doctor")
+	if !strings.Contains(out, "1 managed file is encrypted with age, but this machine has no age key") {
+		t.Fatalf("doctor didn't report the missing age key:\n%s", out)
+	}
+	b.write(".config/mise/age.txt", fakeAgeKey+"\n")
+	if _, out = b.run("doctor"); strings.Contains(out, "no age key") {
+		t.Fatalf("doctor still reports a missing age key:\n%s", out)
 	}
 }
 
@@ -752,6 +862,8 @@ func TestSchedulerHelpers(t *testing.T) {
 
 // Built at runtime so secret scanners don't flag the test fixture itself.
 var fakeAWSKey = "AKIA" + strings.Repeat("Z", 16)
+
+var fakeAgeKey = "AGE-SECRET-KEY-1" + strings.Repeat("Q", 58)
 
 func TestGlobNonASCII(t *testing.T) {
 	for _, c := range []struct {

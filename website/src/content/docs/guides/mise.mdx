@@ -1,0 +1,141 @@
+---
+title: Use with mise
+description: Sync your global mise tools, tasks and environment with dotsync, while installed tools and secrets stay on each machine.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+[mise](https://mise.jdx.dev) manages tool versions, environment variables and tasks. Its global configuration is plain files under `~/.config/mise/`, so dotsync can sync it like any other dotfile. What syncs is the **recipe**. Each machine still installs its own tools and keeps its own secrets.
+
+## What to sync
+
+| Path | Sync it? | Why |
+|---|---|---|
+| `~/.config/mise/config.toml` | yes | your global tools, settings, `[env]` and inline tasks |
+| `~/.config/mise/conf.d/` | yes | extra config fragments, if you use them |
+| `~/.config/mise/tasks/` | yes | global file tasks. The executable bit is kept |
+| `~/.config/mise/age.txt` | **never** | the key that decrypts your secrets. dotsync refuses it |
+| `~/.config/mise/*.env` | no | plaintext secrets for this machine only (see [below](#keep-them-in-a-local-file)) |
+| `~/.local/share/mise/` | no | installed tools: large, platform-specific, and rebuilt by `mise install` |
+| `mise.toml` inside a project | no | it belongs in that project's own repository |
+
+The simplest setup is to manage the whole directory and ignore the files that must stay local:
+
+```sh
+dotsync add ~/.config/mise -d "mise" --ignore age.txt --ignore '*.env'
+```
+
+dotsync would refuse to upload those two anyway. Ignoring them keeps them out of `dotsync status` and `doctor`, which would otherwise list them as held back on every run.
+
+## Installing tools on the other machines
+
+dotsync syncs files. It never runs commands. When `config.toml` arrives on another machine, the tools it lists aren't installed until mise installs them. Pick whichever of these suits you:
+
+- **Run it yourself** when a tool is missing: `mise install`. It's quick when there's nothing to do.
+- **From your shell startup**, in the background, so it never slows the prompt down:
+
+  ```sh title="~/.zshrc"
+  (mise install --quiet >/dev/null 2>&1 &)
+  ```
+
+- **As a synced task** that you run on each new machine:
+
+  ```toml title="~/.config/mise/config.toml"
+  [tasks.bootstrap]
+  description = "Install everything this machine needs"
+  run = "mise install"
+  ```
+
+## Avoiding conflicts from `mise use -g`
+
+`mise use -g` rewrites `~/.config/mise/config.toml`. If two machines change it before they sync, dotsync reports a [conflict](/dotsync/guides/resolve-conflicts/): it doesn't merge, even when the changes are on different lines. Nothing is lost, but you'll have to pick a version. To make this rarer:
+
+- **Run `dotsync sync` after `mise use -g`**, so the change reaches the other machines straight away rather than within five minutes.
+- **Keep tools for one machine out of the shared file.** mise loads every `conf.d/*.toml` file, so give each machine a local file that isn't synced:
+
+  ```sh
+  dotsync set ~/.config/mise --ignore local.toml
+  mise use --path ~/.config/mise/conf.d/local.toml terraform@1.9   # only on this machine
+  ```
+
+- **If you do get a conflict**, `dotsync diff ~/.config/mise/config.toml` shows both sides. Edit the local file so it has both changes, then `dotsync resolve ~/.config/mise/config.toml --keep local`.
+
+## Per-OS tools
+
+Keep one shared `config.toml` and limit tools to the systems that need them with mise's `os` option, rather than keeping one config per OS:
+
+```toml title="~/.config/mise/config.toml"
+[tools]
+node = "lts"
+shellcheck = { version = "latest", os = ["linux"] }
+```
+
+If one machine shouldn't have your mise config at all, `dotsync exclude ~/.config/mise/config.toml` on that machine. See [per-OS and per-machine differences](/dotsync/guides/differences/).
+
+## Secrets
+
+`config.toml` syncs everywhere, so it must not contain plaintext secrets. dotsync [blocks the file](/dotsync/guides/secrets/) if it spots one. mise gives you several ways to avoid storing them there.
+
+### Read them from a password manager
+
+A template can call a command when mise loads the environment. The synced file only holds the reference:
+
+```toml title="~/.config/mise/config.toml"
+[env]
+GITHUB_TOKEN = "{{ exec(command='op read op://dev/github/token') }}"
+```
+
+The secret rules don't flag this. A value that starts with a brace is read at runtime, not stored.
+
+### Keep them in a local file
+
+```toml title="~/.config/mise/config.toml"
+[env]
+_.file = "~/.config/mise/local.env"
+```
+
+Create `~/.config/mise/local.env` on each machine. The `--ignore '*.env'` above keeps it out of sync. Even without that, dotsync wouldn't upload it: `*.env` is on the list of secret paths.
+
+### Encrypt them with age
+
+mise can store an age-encrypted value directly in the config (an experimental feature at the time of writing):
+
+```sh
+mise set --age-encrypt --prompt DB_PASSWORD
+```
+
+```toml title="~/.config/mise/config.toml"
+[env]
+DB_PASSWORD = { age = { value = "<base64>" } }
+```
+
+Only ciphertext reaches the repository, so the file syncs without any exceptions.
+
+### Encrypted files with sops
+
+mise can also load a sops-encrypted file such as `.env.json` or `.env.yaml`:
+
+```toml title="~/.config/mise/config.toml"
+[env]
+_.file = { path = "~/.config/mise/.env.json", redact = true }
+```
+
+dotsync recognizes sops files and syncs them even though the name looks like a secret. It still checks their readable lines (keys, comments, `_unencrypted` values), so no `--allow-secrets` is needed. Don't use `--allow-secrets` on the directory: it would let a plaintext file through too.
+
+### The age key
+
+Both approaches depend on an age private key, by default `~/.config/mise/age.txt`. mise can also use your SSH key. Anyone with that key and a copy of the repository can read every secret, so it has to stay off the repository. dotsync refuses it by path (`.config/mise/age.txt`, `.config/sops/age/*`) and by content (`AGE-SECRET-KEY-1…`).
+
+Copy it to each new machine yourself, once. Until you do, `dotsync doctor` on that machine warns about any age or sops files it can't find a key for. It doesn't read mise's own config syntax, so it can't tell you about values encrypted with `mise set --age-encrypt`; those show up as missing variables in `mise env` instead:
+
+<Steps>
+
+1. On a machine that has the key: `cat ~/.config/mise/age.txt`, or store it in your password manager.
+2. On the new machine: paste it into `~/.config/mise/age.txt` and `chmod 600 ~/.config/mise/age.txt`.
+3. Check it works: `mise env` should now list `DB_PASSWORD`.
+
+</Steps>
+
+## Project tasks and trust
+
+Project `mise.toml` files can define tasks and `exec()` templates, so mise asks you to `mise trust` them. Your global `config.toml` is your own file and doesn't need that. Once it's synced, **anyone who can push to your dotfiles repository can change what it runs** the next time mise loads it. The same is true of your shell startup files, so treat the repository with the same care: keep it private and protect the credentials that can push to it.
