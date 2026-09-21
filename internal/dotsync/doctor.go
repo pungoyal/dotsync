@@ -173,8 +173,7 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 	if ls := st.LastSync; ls == nil {
 		d.add(checkWarn, "no sync has completed yet", "", "dotsync sync")
 	} else {
-		t, _ := time.Parse(time.RFC3339, ls.Time)
-		age := time.Since(t).Round(time.Minute)
+		age := time.Since(lastSyncTime(c, st)).Round(time.Minute)
 		switch {
 		case ls.Outcome == "offline":
 			d.add(checkWarn, fmt.Sprintf("last sync %s ago could not reach the remote", age), ls.FetchError, "")

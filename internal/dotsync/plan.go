@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Item is one file or symlink of a managed entry with its three signatures:
@@ -191,8 +192,8 @@ func planEntry(c *Ctx, e *Entry, base map[string]string, adoptRemote bool) ([]*I
 				continue
 			}
 		}
-		lobj, lerr := readObj(lp)
-		robj, rerr := readObj(rp)
+		lobj, lerr := c.cache.obj(lp)
+		robj, rerr := c.cache.obj(rp)
 		if lerr != nil || rerr != nil {
 			it.Action, it.Note = actError, firstErr(lerr, rerr).Error()
 			continue
@@ -212,6 +213,12 @@ func planEntry(c *Ctx, e *Entry, base map[string]string, adoptRemote bool) ([]*I
 		}
 		it.Action = decide(it.L, it.R, it.B, e.Kind == "dir", rootExists, adoptRemote)
 		if it.Action == actUpload && !e.AllowSecrets {
+			if lobj != nil && lobj.Kind == "file" && lobj.Data == nil {
+				if lobj, err = readObj(lp); err != nil { // cached answer: fetch content for the scan
+					it.Action, it.Note = actError, err.Error()
+					continue
+				}
+			}
 			if reason := secretReason(lp, lobj); reason != "" {
 				it.Action, it.Note = actBlocked, reason
 			}
@@ -309,21 +316,33 @@ func buildPlan(c *Ctx, st *State, fetch bool) (*Plan, error) {
 	if fetch {
 		p.Online, p.FetchError = c.fetch()
 	}
-	var err error
-	if p.BaseCommit, err = c.originCommit(); err != nil {
+	c.cache = newStatCache(st.StatCache)
+	head, base, err := c.headAndOrigin()
+	if err != nil {
 		return nil, err
 	}
-	if _, err := c.Git.Must("reset", "-q", "--hard", p.BaseCommit); err != nil {
-		return nil, err
-	}
-	if _, err := c.Git.Must("clean", "-q", "-ffdx"); err != nil {
-		return nil, err
+	p.BaseCommit = base
+	// The cache clone only needs resetting if a previous run modified its working tree (the
+	// marker is created before any modification and removed after a reset) or HEAD moved.
+	today := time.Now().Format("2006-01-02")
+	if head != base || c.repoDirty() || st.LastReset != today {
+		if _, err := c.Git.Must("reset", "-q", "--hard", p.BaseCommit); err != nil {
+			return nil, err
+		}
+		if _, err := c.Git.Must("clean", "-q", "-ffdx"); err != nil {
+			return nil, err
+		}
+		c.markRepoClean()
+		st.LastReset = today
 	}
 	m, err := loadManifest(c.Paths.Repo)
 	if err != nil {
 		return nil, err
 	}
 	original := m.canonical()
+	if len(st.PendingOps) > 0 {
+		c.markRepoDirty() // replaying a remove deletes files from the working tree
+	}
 	for _, op := range st.PendingOps {
 		if err := applyOp(c, m, op); err != nil {
 			var te *transientError

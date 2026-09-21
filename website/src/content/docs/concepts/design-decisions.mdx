@@ -25,7 +25,7 @@ Timestamps lie. Clocks drift, file systems round them, and tools preserve old mt
 
 ## Polling instead of file watching
 
-Watching files needs a long-running daemon, platform-specific APIs (FSEvents, inotify) and care around editors that save in several steps. Dotfiles change rarely, and a few minutes of delay costs nothing. A scheduled job that runs, syncs and exits is simpler, uses no resources in between, and can't leak memory or get stuck. `dotsync sync` is there when you want it now.
+Watching files needs a long-running daemon, platform-specific APIs (FSEvents, inotify) and care around editors that save in several steps. Dotfiles change rarely, and a few minutes of delay costs nothing. A scheduled job that runs, syncs and exits is simpler, uses no resources in between, and can't leak memory or get stuck. An idle run takes about 65 ms and writes nothing to disk (see [resource use](/dotsync/guides/background-agent/#resource-use)). `dotsync sync` is there when you want it now.
 
 ## No templating
 

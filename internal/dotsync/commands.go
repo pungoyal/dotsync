@@ -247,6 +247,10 @@ func cmdSync(args []string, stdout, stderr io.Writer) (int, error) {
 	wait := time.Minute
 	if *quiet {
 		wait = 0
+		// Background runs are short and I/O-bound: one thread and a small heap are plenty, and
+		// keep the agent's footprint minimal and predictable.
+		runtime.GOMAXPROCS(1)
+		debug.SetMemoryLimit(64 << 20)
 	}
 	code := 0
 	err = withLock(c, wait, func() error {
@@ -650,7 +654,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 		if ls.Outcome == "offline" {
 			extra = ": " + ls.FetchError
 		}
-		fmt.Fprintf(w, "last sync: %s (%s%s)\n", ls.Time, ls.Outcome, extra)
+		fmt.Fprintf(w, "last sync: %s (%s%s)\n", lastSyncTime(c, st).Format(time.RFC3339), ls.Outcome, extra)
 	} else {
 		fmt.Fprintln(w, "last sync: never")
 	}

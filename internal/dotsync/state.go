@@ -1,12 +1,14 @@
 package dotsync
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"syscall"
 	"time"
 )
@@ -69,6 +71,18 @@ type State struct {
 	// re-established a base for every entry, differing files become conflicts rather than
 	// being replaced by the remote version.
 	Recovered bool `json:"recovered,omitempty"`
+	// StatCache lets unchanged files skip re-reading and hashing (see statcache.go).
+	StatCache map[string]statEntry `json:"stat_cache,omitempty"`
+	// Housekeeping runs on a fixed schedule, never at random: backups are pruned at most once a
+	// day and the cache clone is garbage-collected once a week.
+	LastBackupPrune string `json:"last_backup_prune,omitempty"`
+	LastGC          string `json:"last_gc,omitempty"`
+	LastReset       string `json:"last_reset,omitempty"` // the cache clone is fully reset at least daily
+	// RepoConfig is the version of the git settings applied to the cache clone.
+	RepoConfig int `json:"repo_config,omitempty"`
+
+	raw      []byte       // file contents as loaded, to skip rewriting an unchanged state
+	prevSync *SyncSummary // last_sync as loaded
 }
 
 func (s *State) entry(e *Entry) *EntryState {
@@ -91,6 +105,15 @@ func setBase(es *EntryState, rel, sig string) {
 func loadState(c *Ctx) (*State, error) {
 	s := &State{}
 	data, err := os.ReadFile(c.Paths.State)
+	defer func() {
+		if s != nil {
+			s.raw = data
+			if s.LastSync != nil {
+				prev := *s.LastSync
+				s.prevSync = &prev
+			}
+		}
+	}()
 	if err == nil {
 		if jerr := json.Unmarshal(data, s); jerr != nil {
 			// Losing the base is safe: with Recovered set, every file that differs from the remote
@@ -131,6 +154,47 @@ func writeJSON(path string, v any, perm os.FileMode) error {
 }
 
 func saveState(c *Ctx, s *State) error { return writeJSON(c.Paths.State, s, 0o600) }
+
+// saveStateIfChanged writes the state only when something other than the sync time changed.
+// Otherwise it just touches the file's modification time, which records when the last sync ran
+// (see lastSyncTime) without writing any data.
+func saveStateIfChanged(c *Ctx, s *State) error {
+	if prev, cur := s.prevSync, s.LastSync; prev != nil && cur != nil && sameSummary(*prev, *cur) {
+		cur.Time = prev.Time
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if bytes.Equal(data, s.raw) {
+		now := time.Now()
+		return os.Chtimes(c.Paths.State, now, now)
+	}
+	if err := atomicWrite(c.Paths.State, data, 0o600); err != nil {
+		return err
+	}
+	s.raw = data
+	return nil
+}
+
+func sameSummary(a, b SyncSummary) bool {
+	a.Time, b.Time = "", ""
+	return reflect.DeepEqual(a, b)
+}
+
+// lastSyncTime is when the last sync ran: the recorded time, or the state file's modification
+// time if a later sync changed nothing (and so only touched the file).
+func lastSyncTime(c *Ctx, s *State) time.Time {
+	var t time.Time
+	if s.LastSync != nil {
+		t, _ = time.Parse(time.RFC3339, s.LastSync.Time)
+	}
+	if fi, err := os.Stat(c.Paths.State); err == nil && fi.ModTime().After(t) {
+		t = fi.ModTime()
+	}
+	return t
+}
 
 // ErrBusy means another dotsync process holds the lock.
 var ErrBusy = errors.New("another dotsync process is running")
@@ -193,6 +257,7 @@ func (b *Backups) save(path string) (string, error) {
 
 // Ctx carries everything a command needs.
 type Ctx struct {
+	cache  *statCache // set by buildPlan
 	Paths  *Paths
 	Config *Config
 	Git    *Git

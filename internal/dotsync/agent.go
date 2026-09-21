@@ -137,10 +137,13 @@ func agentInstall(c *Ctx) (string, error) {
 			fmt.Fprintf(&env, "Environment=%s\n", systemdQuote(kv[0]+"="+kv[1]))
 		}
 		service := fmt.Sprintf("[Unit]\nDescription=dotsync: synchronize dotfiles\nAfter=network-online.target\n\n"+
-			"[Service]\nType=oneshot\n%sExecStart=%s\nNice=10\nIOSchedulingClass=idle\n",
+			"[Service]\nType=oneshot\n%sExecStart=%s\nNice=10\nCPUSchedulingPolicy=idle\nIOSchedulingClass=idle\n",
 			env.String(), strings.Join(quoted, " "))
 		timer := fmt.Sprintf("[Unit]\nDescription=dotsync: periodic dotfile sync\n\n"+
-			"[Timer]\nOnBootSec=1min\nOnUnitActiveSec=%ds\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n", interval)
+			"[Timer]\nOnBootSec=1min\nOnUnitActiveSec=%ds\nPersistent=true\n"+
+			"# A fixed schedule: no random delay. The 1-minute accuracy window lets systemd batch\n"+
+			"# this wake-up with others (fewer CPU wake-ups) at a fixed per-machine offset.\n"+
+			"RandomizedDelaySec=0\nAccuracySec=1min\n\n[Install]\nWantedBy=timers.target\n", interval)
 		if err := atomicWrite(filepath.Join(systemdDir(), "dotsync.service"), []byte(service), 0o644); err != nil {
 			return "", err
 		}
@@ -193,6 +196,8 @@ func launchdPlistContent(c *Ctx, cmd []string, interval int) string {
   <key>RunAtLoad</key><true/>
   <key>ProcessType</key><string>Background</string>
   <key>LowPriorityIO</key><true/>
+  <key>LowPriorityBackgroundIO</key><true/>
+  <key>Nice</key><integer>10</integer>
   <key>StandardOutPath</key><string>%s</string>
   <key>StandardErrorPath</key><string>%s</string>
   <key>EnvironmentVariables</key>
