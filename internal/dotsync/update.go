@@ -195,6 +195,25 @@ func extractBinary(archive, dest string) error {
 	}
 }
 
+// refreshAgent re-installs the background agent with the new binary, so its definition (e.g.
+// scheduling and priority settings) matches the new version. Running the *new* binary matters:
+// this process is still the old one.
+func refreshAgent(say func(string, ...any), newBinary string) {
+	c, err := newCtx(true, true, io.Discard, io.Discard)
+	if err != nil {
+		return // not set up on this machine: nothing to refresh
+	}
+	if installed, _ := agentInstalled(c); !installed {
+		return
+	}
+	out, err := exec.Command(newBinary, "agent", "install").CombinedOutput()
+	if err != nil {
+		say("note: could not refresh the background agent (%s); run `dotsync agent install`", lastLine(string(out)))
+		return
+	}
+	say("background agent refreshed: %s", strings.TrimSpace(string(out)))
+}
+
 // replaceBinary atomically replaces path with the file at src, keeping it executable.
 func replaceBinary(src, path string) error {
 	data, err := os.ReadFile(src)
@@ -325,5 +344,6 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 		from = "development build"
 	}
 	say("dotsync %s → %s", from, version)
+	refreshAgent(say, targets[len(targets)-1])
 	return 0, nil
 }
