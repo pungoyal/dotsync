@@ -215,6 +215,9 @@ func printResult(c *Ctx, r *SyncResult) {
 		summary += " — pushed " + r.Commit
 	}
 	c.say("dotsync: %s", summary)
+	if r.Problem != "" {
+		c.say("\n  ✗ %s\n    → %s", r.Problem, r.Fix)
+	}
 }
 
 func resultCode(r *SyncResult) int {
@@ -658,6 +661,9 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 			extra = ": " + ls.FetchError
 		}
 		fmt.Fprintf(w, "last sync: %s (%s%s)\n", lastSyncTime(c, st).Format(time.RFC3339), ls.Outcome, extra)
+		if ls.Problem != "" {
+			fmt.Fprintf(w, "  ✗ %s\n    → %s\n", ls.Problem, ls.Fix)
+		}
 	} else {
 		fmt.Fprintln(w, "last sync: never")
 	}
@@ -699,6 +705,15 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 				fmt.Fprintln(w, line)
 			}
 		}
+	}
+	blocked := false
+	for _, r := range rows {
+		blocked = blocked || strings.HasPrefix(r.Status, "BLOCKED")
+	}
+	if blocked {
+		fmt.Fprintln(w, "\nBLOCKED files look like they contain secrets, so their changes stay on this machine.")
+		fmt.Fprintln(w, "  remove the secret, or mark a false positive with a `dotsync:allow-secret` comment on that line:")
+		fmt.Fprintln(w, "  https://pungoyal.github.io/dotsync/guides/secrets/")
 	}
 	if len(st.Conflicts) > 0 {
 		fmt.Fprintln(w, "\nconflicts (neither version has been changed):")
@@ -971,6 +986,9 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 			return 1, err
 		}
 		if r.Code != 0 {
+			if gp := diagnoseGit(c, r.Stderr); gp != nil {
+				return 1, fmt.Errorf("git clone failed: %s\n  %s\n  → %s", lastLine(r.Stderr), gp.Problem, gp.Fix)
+			}
 			return 1, fmt.Errorf("git clone failed: %s", lastLine(r.Stderr))
 		}
 	}
@@ -993,7 +1011,10 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 		}
 		if ok, ferr := c.fetch(); !ok {
-			return fmt.Errorf("cannot fetch from %s: %s", cfg.Remote, ferr)
+			if gp := diagnoseGit(c, ferr); gp != nil {
+				return fmt.Errorf("cannot fetch from %s: %s\n  → %s", cfg.Remote, gp.Problem, gp.Fix)
+			}
+			return fmt.Errorf("cannot fetch from %s: %s", cfg.Remote, lastLine(ferr))
 		}
 		if err := writeJSON(c.Paths.Config, cfg, 0o600); err != nil {
 			return err

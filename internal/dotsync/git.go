@@ -118,7 +118,7 @@ func (c *Ctx) fetch() (bool, string) {
 	if r.Code == 0 {
 		return true, ""
 	}
-	return false, lastLine(r.Stderr)
+	return false, strings.TrimSpace(r.Stderr) // full output: diagnoseGit needs more than the last line
 }
 
 // testHookBeforePush lets tests simulate another machine pushing at the worst moment.

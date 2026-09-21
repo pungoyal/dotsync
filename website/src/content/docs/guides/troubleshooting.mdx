@@ -9,11 +9,13 @@ Start with **`dotsync doctor`**. It checks git, the remote (exactly as the backg
 
 ## `last sync: … (offline: …)`
 
-dotsync couldn't reach the remote. The text after `offline:` is git's own error.
+dotsync couldn't reach the remote. The text after `offline:` is git's own error. When the cause is something you need to fix, `status` and `doctor` print it underneath with a `→` fix, and the agent sends a desktop notification.
 
 | Error mentions | Fix |
 |---|---|
 | `Permission denied (publickey)`, `Authentication failed`, `could not read Username` | git needs credentials it can't prompt for. See [git access without prompts](/dotsync/guides/background-agent/#git-access-without-prompts) |
+| `git is configured to run /usr/bin/gh, which isn't installed on this machine` | a synced git config names a program by an absolute path from another machine. See [tools that write absolute paths](/dotsync/guides/differences/#tools-that-write-absolute-paths) |
+| `Host key verification failed` | run `ssh -T git@github.com` (or your host) once, and accept the key |
 | `Could not resolve host`, `Connection timed out` | you're offline. Local changes wait and are sent automatically later |
 | `Repository not found` | check the URL: `git -C ~/.local/share/dotsync/repo remote -v` |
 

@@ -55,6 +55,8 @@ type SyncSummary struct {
 	Outcome    string         `json:"outcome"` // ok, partial, offline
 	Online     bool           `json:"online"`
 	FetchError string         `json:"fetch_error,omitempty"`
+	Problem    string         `json:"problem,omitempty"` // a git failure the user needs to fix
+	Fix        string         `json:"fix,omitempty"`
 	Commit     string         `json:"commit,omitempty"`
 	Counts     map[string]int `json:"counts"`
 	Errors     []string       `json:"errors"`

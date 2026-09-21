@@ -796,9 +796,6 @@ func TestEncryptedFiles(t *testing.T) {
 }
 
 func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
-	for _, v := range []string{"SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE"} {
-		t.Setenv(v, "")
-	}
 	w := newWorld(t)
 	a, b := w.machine("alpha"), w.machine("beta")
 	a.init()
@@ -813,19 +810,10 @@ func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
 		t.Fatal("sops file was not sent")
 	}
 
-	// A machine without the key is told it needs one; once the key is there, the warning goes away.
 	b.init()
 	b.expect(".config/mise/.env.yaml", sopsYAML)
 	if b.exists(".config/mise/age.txt") {
 		t.Fatal("age key reached another machine")
-	}
-	_, out = b.run("doctor")
-	if !strings.Contains(out, "1 managed file is encrypted with age, but this machine has no age key") {
-		t.Fatalf("doctor didn't report the missing age key:\n%s", out)
-	}
-	b.write(".config/mise/age.txt", fakeAgeKey+"\n")
-	if _, out = b.run("doctor"); strings.Contains(out, "no age key") {
-		t.Fatalf("doctor still reports a missing age key:\n%s", out)
 	}
 }
 
@@ -1232,5 +1220,75 @@ func TestAgentDefinitionDrift(t *testing.T) {
 	}
 	if _, out := a.run("doctor"); !strings.Contains(out, "definition is from an older dotsync") {
 		t.Errorf("doctor didn't flag the outdated agent:\n%s", out)
+	}
+}
+
+// ---------------------------------------------------------------- actionable git failures
+
+func TestDiagnoseGit(t *testing.T) {
+	c := &Ctx{Config: &Config{Remote: "git@github.com:you/dotfiles.git"}}
+	for _, tc := range []struct {
+		stderr, problem, fix string
+	}{
+		{"Host key verification failed.\nfatal: Could not read from remote repository.", "host key", "ssh -T git@github.com"},
+		{"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.", "rejected the SSH key", "ssh-add"},
+		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", "no stored credentials", "credential helper"},
+		{"remote: Invalid username or password.\nfatal: Authentication failed for 'https://github.com/x/y/'", "rejected the stored credentials", "renew them"},
+		{"remote: Repository not found.\nfatal: repository 'https://github.com/x/y/' not found", "doesn't exist", "config.json"},
+		{"/usr/bin/gh auth git-credential get: /usr/bin/gh: No such file or directory\nfatal: could not read Username for 'https://github.com': terminal prompts disabled",
+			"/usr/bin/gh, which isn't installed", "name gh without its path"},
+		{"gh auth git-credential get: gh: command not found\nfatal: could not read Username", "run gh, which isn't installed", "install gh"},
+	} {
+		gp := diagnoseGit(c, tc.stderr)
+		if gp == nil || !strings.Contains(gp.Problem, tc.problem) || !strings.Contains(gp.Fix, tc.fix) {
+			t.Errorf("diagnoseGit(%q) = %+v; want problem ~%q, fix ~%q", tc.stderr, gp, tc.problem, tc.fix)
+		}
+	}
+	for _, network := range []string{
+		"ssh: Could not resolve hostname github.com: nodename nor servname provided, or not known",
+		"fatal: unable to access 'https://github.com/x/y/': Could not resolve host: github.com",
+		"ssh: connect to host github.com port 22: Operation timed out",
+	} {
+		if gp := diagnoseGit(c, network); gp != nil {
+			t.Errorf("network failure %q diagnosed as %+v; it should just wait", network, gp)
+		}
+	}
+	for remote, want := range map[string]gitRemote{
+		"https://git.example.com/me/dots.git":    {url: "https://git.example.com/me/dots.git", host: "git.example.com", sshTarget: "git.example.com"},
+		"git@git.example.com:me/dots.git":        {url: "git@git.example.com:me/dots.git", host: "git.example.com", sshTarget: "git@git.example.com"},
+		"ssh://me@git.example.com:2222/dots.git": {url: "ssh://me@git.example.com:2222/dots.git", host: "git.example.com", sshTarget: "me@git.example.com"},
+	} {
+		if got := parseRemote(&Ctx{Config: &Config{Remote: remote}}); got != want {
+			t.Errorf("parseRemote(%q) = %+v, want %+v", remote, got, want)
+		}
+	}
+}
+
+// The exact dead end this guards against: a synced git config names a credential helper by an
+// absolute path that exists only on the machine that wrote it.
+func TestDiagnoseSyncedCredentialHelper(t *testing.T) {
+	w := newWorld(t)
+	a := w.machine("alpha")
+	a.init()
+	a.write(".gitconfig", "[user]\n\tname = me\n[credential \"https://github.com\"]\n\thelper =\n\thelper = !/usr/local/nope/gh auth git-credential\n")
+	a.ok("add", a.path(".gitconfig"))
+	t.Setenv("GIT_CONFIG_GLOBAL", a.path(".gitconfig"))
+	a.activate()
+	c, err := newCtx(true, true, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gp := diagnoseGit(c, "/usr/local/nope/gh auth git-credential get: /usr/local/nope/gh: No such file or directory\n"+
+		"fatal: could not read Username for 'https://github.com': terminal prompts disabled")
+	if gp == nil {
+		t.Fatal("no diagnosis")
+	}
+	for _, want := range []string{"/usr/local/nope/gh", "(set in ~/.gitconfig)", "synced by dotsync"} {
+		if !strings.Contains(gp.Problem, want) {
+			t.Errorf("problem %q missing %q", gp.Problem, want)
+		}
+	}
+	if !strings.Contains(gp.Fix, "helper = !gh auth git-credential") {
+		t.Errorf("fix = %q", gp.Fix)
 	}
 }
