@@ -32,7 +32,7 @@ Files are written to a temporary file in the same directory, flushed to disk, th
 
 ## A crash can't corrupt anything
 
-- The cache clone is reset at the start of every sync, so an interrupted sync leaves nothing behind.
+- The cache clone is marked dirty *before* dotsync modifies it and reset before it's used again, so an interrupted sync leaves nothing behind.
 - The base only moves after a successful local write or a successful push.
 - State is written atomically. If it's ever unreadable anyway, it's set aside, and every file that differs from the remote becomes a **conflict** rather than being replaced.
 

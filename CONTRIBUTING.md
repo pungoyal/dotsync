@@ -115,6 +115,6 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 2. When a maintainer merges the release PR, release-please tags the commit and creates a GitHub release.
 3. The same workflow then builds binaries for macOS and Linux (amd64/arm64) with GoReleaser, uploads them with checksums and SBOMs, and creates signed build provenance attestations.
 
-The release PR is opened by the workflow's `GITHUB_TOKEN`, so its CI checks wait for a maintainer to approve them. Alternatively, add a fine-grained token with *contents* and *pull requests* write access as the `RELEASE_PLEASE_TOKEN` repository secret, and they run automatically.
+PRs opened with the workflow's `GITHUB_TOKEN` don't trigger CI on their own, so the release workflow dispatches CI and CodeQL onto the release PR's branch itself. Their results appear on the PR as usual. **Only merge a release PR once those checks have passed.** Optionally, a fine-grained token with *contents* and *pull requests* write access, stored as the `RELEASE_PLEASE_TOKEN` secret, makes release PRs behave exactly like normal ones.
 
 No one builds or uploads release artifacts by hand. Maintainers can re-run the build for an existing tag from the *release* workflow's "Run workflow" button.

@@ -26,6 +26,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write # to dispatch CI on the release PR
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -38,6 +39,18 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      # Pull requests opened with GITHUB_TOKEN don't trigger workflows, but workflow_dispatch
+      # does, and its check runs attach to the PR's head commit. So the release PR gets the full
+      # CI before anyone merges it. (Unneeded when RELEASE_PLEASE_TOKEN is configured.)
+      - name: Run CI on the release PR
+        if: steps.release.outputs.pr && env.HAS_RELEASE_TOKEN != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN != '' }}
+          BRANCH: ${{ fromJSON(steps.release.outputs.pr || '{}').headBranchName }}
+        run: |
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          gh workflow run codeql.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
 
   goreleaser:
     needs: release-please

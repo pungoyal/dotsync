@@ -89,5 +89,5 @@ To stop managing an entry on **one** machine only, run `dotsync exclude <entry>`
 Everything above can be done with commands, but you can also edit `manifest.json` directly in any clone of your dotfiles repository and push, which is handy for bulk changes. Machines pick it up on their next sync. See the [manifest reference](/dotsync/reference/manifest/) for every field.
 
 <Aside type="caution">
-Don't edit the cache clone in `~/.local/share/dotsync/repo`. dotsync resets it on every sync. Use a separate clone.
+Don't edit the cache clone in `~/.local/share/dotsync/repo`. It belongs to dotsync, which resets it whenever it needs to. Use a separate clone.
 </Aside>
