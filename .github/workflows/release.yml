@@ -50,8 +50,9 @@ jobs:
           manifest-file: .release-please-manifest.json
       # A release PR opened with GITHUB_TOKEN is authored by github-actions[bot], so GitHub holds
       # its pull_request runs for maintainer approval ("first-time contributor" policy).
-      # workflow_dispatch isn't subject to that, and its checks attach to the PR's head commit.
-      # So whenever a release PR is open, run CI and CodeQL on it directly.
+      # workflow_dispatch isn't subject to that. So whenever a release PR is open, run CI and
+      # CodeQL on it directly; they report their results to the PR as commit statuses (see
+      # .github/actions/commit-status).
       - name: Run checks on the open release PR
         if: steps.app-token.outputs.token == ''
         env:

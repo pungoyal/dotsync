@@ -160,3 +160,34 @@ jobs:
         run: |
           ./dist/dotsync_linux_amd64_v1/dotsync version
           ./dist/dotsync_linux_amd64_v1/dotsync --help
+
+  # One result for the whole workflow: a single check to require in branch protection, and on
+  # dispatched runs (the release PR) a commit status, which the PR shows.
+  ok:
+    name: ci ok
+    if: always()
+    needs: [test, minimum-go, lint, fuzz-targets, fuzz, vulncheck, release-check]
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - id: result
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          result=success
+          for r in $RESULTS; do [ "$r" = success ] || result=failure; done
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - if: github.event_name == 'workflow_dispatch'
+        uses: ./.github/actions/commit-status
+        with:
+          context: ci
+          result: ${{ steps.result.outputs.result }}
+      - run: test "$RESULT" = success
+        env:
+          RESULT: ${{ steps.result.outputs.result }}
