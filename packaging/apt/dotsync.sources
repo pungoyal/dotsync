@@ -1,0 +1,5 @@
+Types: deb
+URIs: https://pungoyal.github.io/dotsync/apt
+Suites: stable
+Components: main
+Signed-By: /etc/apt/keyrings/dotsync.asc

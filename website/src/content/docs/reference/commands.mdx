@@ -38,7 +38,7 @@ dotsync <command> [flags] [arguments]
 dotsync init [flags] <git-url>
 ```
 
-Sets up this machine. It clones the repository, creates the manifest if the repository is empty, writes the [machine configuration](/dotsync/reference/configuration/), copies the binary to `~/.local/bin`, runs the first sync, and installs the [background agent](/dotsync/guides/background-agent/). Safe to run again.
+Sets up this machine. It clones the repository, creates the manifest if the repository is empty, writes the [machine configuration](/dotsync/reference/configuration/), copies the binary to `~/.local/bin` (unless Homebrew or apt installed it), runs the first sync, and installs the [background agent](/dotsync/guides/background-agent/). Safe to run again.
 
 | Flag | Description |
 |---|---|
@@ -96,6 +96,8 @@ Replaces the running binary with the latest release, applying the same checks as
 | `--check` | only report whether a newer release exists |
 | `--version vX.Y.Z` | install a specific release instead of the latest, including an older one |
 | `--require-attestation` | refuse to update unless the build provenance verifies |
+
+If Homebrew or apt installed dotsync, `update` changes nothing and tells you the package manager's command instead (`brew upgrade dotsync`, or `sudo apt install --only-upgrade dotsync`); `--check` works as usual.
 
 `dotsync doctor` also mentions when an update is available. Development builds (`make build`) only update with an explicit `--version`.
 

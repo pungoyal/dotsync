@@ -8,8 +8,15 @@ Your dotfiles are ordinary files, so uninstalling dotsync leaves them exactly as
 ```sh
 dotsync agent uninstall
 rm -rf ~/.config/dotsync ~/.local/share/dotsync ~/.local/state/dotsync
-rm ~/.local/bin/dotsync
 ```
+
+Run `dotsync agent uninstall` **before** removing the binary, on every user account that set dotsync up, or the agent keeps trying to run it. Then remove the binary the way it was installed:
+
+| Installed with | Remove with |
+|---|---|
+| install script, `init` or a release archive | `rm ~/.local/bin/dotsync` |
+| Homebrew | `brew uninstall dotsync` |
+| apt | `sudo apt remove dotsync`, and optionally `sudo rm /etc/apt/sources.list.d/dotsync.sources /etc/apt/keyrings/dotsync.asc` |
 
 - Other machines are unaffected and keep syncing with each other.
 - `~/.local/state/dotsync` holds your **backups**. Copy out anything you want to keep before deleting it.

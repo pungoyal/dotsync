@@ -13,7 +13,7 @@ test: ## vet + race-enabled tests
 
 lint: ## golangci-lint + shellcheck
 	golangci-lint run ./...
-	shellcheck install.sh
+	shellcheck install.sh scripts/*.sh packaging/*/*.sh
 
 snapshot: ## local release build of every platform into dist/ (no publishing)
 	goreleaser release --snapshot --clean

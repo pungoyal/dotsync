@@ -264,12 +264,15 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 		say("latest release: %s (this is a development build)", tag)
 		return 0, nil
 	case *check:
-		say("update available: %s → %s (run `dotsync update`)", current, version)
+		say("update available: %s → %s (%s)", current, version, runHint(upgradeHint()))
 		return 0, nil
-	case current == "" && *want == "":
+	}
+	if pm, ok := packaged(); ok {
+		return 1, fmt.Errorf("dotsync was installed with %s, which also updates it: %s", pm.name, pm.upgrade)
+	}
+	if current == "" && *want == "" {
 		return 1, errors.New("this is a development build; pass --version to replace it with a release")
 	}
-
 	targets, err := installTargets()
 	if err != nil {
 		return 1, err

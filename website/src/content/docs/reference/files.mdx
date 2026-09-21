@@ -16,7 +16,7 @@ Everything dotsync keeps on a machine lives under the standard XDG base director
 | `~/.local/state/dotsync/sync.log` | log of changes, conflicts and errors (rotated to `sync.log.1` at 1 MiB) | yes |
 | `~/.local/state/dotsync/agent.log` | output of the scheduled job | yes |
 | `~/.local/state/dotsync/lock` | prevents two syncs running at once | yes, when no sync is running |
-| `~/.local/bin/dotsync` | the binary the agent runs | reinstall with `init` |
+| `~/.local/bin/dotsync` | the binary the agent runs (a Homebrew or apt install runs its own binary instead) | reinstall with `init` |
 | `~/Library/LaunchAgents/io.github.dotsync.plist` | macOS agent | use `dotsync agent uninstall` |
 | `~/.config/systemd/user/dotsync.{service,timer}` | Linux agent (systemd) | use `dotsync agent uninstall` |
 
