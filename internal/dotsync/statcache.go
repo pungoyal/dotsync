@@ -59,11 +59,8 @@ func (sc *statCache) obj(path string) (*Obj, error) {
 		return readObj(path)
 	}
 	path = filepath.Clean(path)
-	fi, err := os.Lstat(path)
-	if err != nil {
-		if notExist(err) {
-			return nil, nil
-		}
+	fi, err := lstat(path)
+	if fi == nil || err != nil {
 		return nil, err
 	}
 	key, cacheable := entryFor(fi)
@@ -71,11 +68,11 @@ func (sc *statCache) obj(path string) (*Obj, error) {
 		if e, ok := sc.entries[path]; ok && sc.fresh(key) && e.Size == key.Size && e.Mtime == key.Mtime &&
 			e.Ctime == key.Ctime && e.Ino == key.Ino && e.Mode == key.Mode {
 			sc.used[path] = true
-			return &Obj{Kind: "file", Exec: fi.Mode()&0o100 != 0, Sig: e.Sig}, nil
+			return &Obj{Kind: kindFile, Exec: fi.Mode()&0o100 != 0, Sig: e.Sig}, nil
 		}
 	}
 	o, err := readObj(path)
-	if err != nil || o == nil || !cacheable || o.Kind != "file" || !sc.fresh(key) {
+	if err != nil || o == nil || !cacheable || o.Kind != kindFile || !sc.fresh(key) {
 		return o, err
 	}
 	key.Sig = o.Sig

@@ -226,7 +226,7 @@ func expandTarget(spec string, p *Paths) (string, error) {
 // Entry is a validated manifest entry.
 type Entry struct {
 	Source, TargetSpec, Description string
-	Kind                            string // "file" or "dir"; "" until resolved
+	Kind                            string // kindFile or kindDir; "" until resolved
 	OS                              []string
 	Mode                            int // -1: keep local permissions
 	Ignore                          []string
@@ -257,7 +257,7 @@ func parseEntry(raw map[string]any) (*Entry, error) {
 	e.Description = str(raw["description"])
 	if v, ok := raw["type"]; ok {
 		e.Kind = str(v)
-		if e.Kind != "file" && e.Kind != "dir" {
+		if e.Kind != kindFile && e.Kind != kindDir {
 			return nil, fmt.Errorf("entry '%s': type must be \"file\" or \"dir\"", src)
 		}
 	}
@@ -337,6 +337,19 @@ func (o *Op) subject() string {
 		return str(o.Entry["source"])
 	}
 	return o.Source
+}
+
+// remove drops the entry with the given source, reporting whether there was one.
+func (m *Manifest) remove(source string) bool {
+	kept := m.Entries[:0:0]
+	for _, raw := range m.Entries {
+		if rawSource(raw) != source {
+			kept = append(kept, raw)
+		}
+	}
+	removed := len(kept) != len(m.Entries)
+	m.Entries = kept
+	return removed
 }
 
 // applyUpdate returns a copy of raw with an update op's changes applied.
@@ -429,18 +442,11 @@ func applyOp(c *Ctx, m *Manifest, op *Op) error {
 		}
 		m.Entries = append(m.Entries, entry)
 	case "remove":
-		kept := m.Entries[:0:0]
-		for _, raw := range m.Entries {
-			if rawSource(raw) != op.Source {
-				kept = append(kept, raw)
-			}
-		}
-		if len(kept) != len(m.Entries) {
+		if m.remove(op.Source) {
 			if err := removePath(filepath.Join(c.Paths.Repo, filesDir, filepath.FromSlash(op.Source))); err != nil {
 				return &transientError{err}
 			}
 		}
-		m.Entries = kept
 	case "update":
 		for _, raw := range m.Entries {
 			if rawSource(raw) != op.Source {

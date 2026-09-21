@@ -147,7 +147,7 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 
 	// background agent
-	status := agentStatus(c)
+	status := agentStatus()
 	switch {
 	case strings.Contains(status, "not installed") || strings.Contains(status, "not loaded"):
 		d.add(checkFail, "background agent: "+strings.TrimSuffix(status, " (run `dotsync agent install`)"), "", "dotsync agent install")

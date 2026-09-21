@@ -28,12 +28,9 @@ func executeLocal(c *Ctx, st *State, p *Plan, backups *Backups) []*Item {
 			case actOK:
 				setBase(es, it.Rel, it.R)
 			case actDownload:
-				cur, err := readObj(it.Local)
+				cur, err := recheck(it)
 				if err != nil {
 					return err
-				}
-				if sigOf(cur) != it.L {
-					return &UnstableError{it.Local}
 				}
 				robj, err := readObj(it.Repo)
 				if err != nil {
@@ -51,12 +48,8 @@ func executeLocal(c *Ctx, st *State, p *Plan, backups *Backups) []*Item {
 				}
 				setBase(es, it.Rel, it.R)
 			case actDeleteLocal:
-				cur, err := readObj(it.Local)
-				if err != nil {
+				if _, err := recheck(it); err != nil {
 					return err
-				}
-				if sigOf(cur) != it.L {
-					return &UnstableError{it.Local}
 				}
 				b, err := backups.save(it.Local)
 				if err != nil {
@@ -71,12 +64,9 @@ func executeLocal(c *Ctx, st *State, p *Plan, backups *Backups) []*Item {
 				}
 				setBase(es, it.Rel, "")
 			case actUpload:
-				lobj, err := readObj(it.Local)
+				lobj, err := recheck(it)
 				if err != nil {
 					return err
-				}
-				if sigOf(lobj) != it.L {
-					return &UnstableError{it.Local}
 				}
 				c.markRepoDirty()
 				if err := writeRepo(it.Repo, lobj); err != nil {
@@ -98,6 +88,16 @@ func executeLocal(c *Ctx, st *State, p *Plan, backups *Backups) []*Item {
 		}
 	}
 	return staged
+}
+
+// recheck re-reads an item's local file right before acting on it, refusing if it changed since
+// the plan was made (the item is then retried on the next sync).
+func recheck(it *Item) (*Obj, error) {
+	o, err := readObj(it.Local)
+	if err == nil && sigOf(o) != it.L {
+		err = &UnstableError{it.Local}
+	}
+	return o, err
 }
 
 // recordConflicts remembers conflicts and keeps a copy of each remote side for `dotsync diff`.
@@ -328,7 +328,7 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 	}
 	res := &SyncResult{
 		SyncSummary: SyncSummary{Time: nowISO(), Outcome: outcome, Online: p.Online, FetchError: p.FetchError,
-			Problem: problemOf(p), Fix: fixOf(p),
+			Problem: p.GitProblem.problem(), Fix: p.GitProblem.fix(),
 			Commit: commit, Counts: counts, Errors: errs},
 		Items: items,
 	}
@@ -395,50 +395,33 @@ func housekeeping(c *Ctx, st *State, now time.Time) {
 	}
 }
 
-func problemOf(p *Plan) string {
-	if p.GitProblem == nil {
-		return ""
-	}
-	return p.GitProblem.Problem
-}
-
-func fixOf(p *Plan) string {
-	if p.GitProblem == nil {
-		return ""
-	}
-	return p.GitProblem.Fix
+// notifiers are tried in order; the first available on this OS shows the notification.
+var notifiers = []struct {
+	os, program string
+	args        func(title, message, icon string) []string
+}{
+	// The only way to show dotsync's icon on a macOS notification from a command-line tool.
+	{"darwin", "terminal-notifier", func(t, m, icon string) []string {
+		return []string{"-title", t, "-message", m, "-group", "dotsync", "-appIcon", icon}
+	}},
+	{"darwin", "osascript", func(t, m, _ string) []string {
+		qt, _ := json.Marshal(t)
+		qm, _ := json.Marshal(m)
+		return []string{"-e", fmt.Sprintf("display notification %s with title %s", qm, qt)}
+	}},
+	{"linux", "notify-send", func(t, m, icon string) []string {
+		return []string{"--app-name=dotsync", "--icon=" + icon, t, m}
+	}},
 }
 
 func notify(title, message string) {
 	if os.Getenv("DOTSYNC_NO_NOTIFY") != "" {
 		return
 	}
-	icon := installIcon()
-	var cmd *exec.Cmd
-	switch {
-	case osName() == "darwin" && hasCommand("terminal-notifier"):
-		// The only way to show the dotsync icon on a macOS notification from a CLI tool.
-		cmd = exec.Command("terminal-notifier", "-title", title, "-message", message, "-group", "dotsync", "-appIcon", icon)
-	case osName() == "darwin":
-		t, _ := json.Marshal(title)
-		m, _ := json.Marshal(message)
-		cmd = exec.Command("osascript", "-e", fmt.Sprintf("display notification %s with title %s", m, t))
-	case hasCommand("notify-send"):
-		args := []string{"--app-name=dotsync"}
-		if icon != "" {
-			args = append(args, "--icon="+icon)
-		}
-		cmd = exec.Command("notify-send", append(args, title, message)...)
-	default:
-		return
-	}
-	done := make(chan struct{})
-	go func() { _ = cmd.Run(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
+	for _, n := range notifiers {
+		if n.os == osName() && hasCommand(n.program) {
+			runQuiet(n.program, n.args(title, message, installIcon())...)
+			return
 		}
 	}
 }

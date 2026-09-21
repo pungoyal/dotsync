@@ -62,16 +62,16 @@ func secretPathReason(path string) string {
 	return ""
 }
 
+// secretContentReason scans data line by line. For a format that encrypts values within a
+// readable file, the encrypted values are removed first and everything else is still scanned.
 func secretContentReason(data []byte) string {
-	sops := encryption(data) == "sops"
+	f := cipherFormatOf(data)
 	for _, line := range splitLines(data) {
 		if bytes.Contains(line, allowMarker) {
 			continue
 		}
-		if sops {
-			// Remove only the encrypted values: anything else on the line (keys, comments,
-			// unencrypted values, or everything in a minified file) is still scanned.
-			line = sopsValue.ReplaceAll(line, nil)
+		if f != nil && f.values != nil {
+			line = f.values.ReplaceAll(line, nil)
 		}
 		for _, r := range secretContent {
 			if r.re.Match(line) {
@@ -83,56 +83,71 @@ func secretContentReason(data []byte) string {
 }
 
 // secretReason explains why path/obj must not leave this machine, or returns "".
-// Encrypted files are judged by what is still readable: age files are pure ciphertext and always
-// pass; sops files may be named like secrets (.env.json) but their plaintext lines are still scanned.
+// Encrypted files are judged by what is still readable: a file that is entirely ciphertext always
+// passes; one that only encrypts values may be named like a secret, but its readable parts are
+// still scanned.
 func secretReason(path string, o *Obj) string {
-	enc := ""
-	if o != nil && o.Kind == "file" {
-		enc = encryption(o.Data)
+	if o == nil || o.Kind != kindFile {
+		return secretPathReason(path)
 	}
-	if enc == "age" {
+	f := cipherFormatOf(o.Data)
+	if f != nil && f.values == nil {
 		return ""
 	}
-	if enc == "" {
+	if f == nil {
 		if r := secretPathReason(path); r != "" {
 			return r
 		}
 	}
-	if o != nil && o.Kind == "file" {
-		return secretContentReason(o.Data)
-	}
-	return ""
+	return secretContentReason(o.Data)
 }
 
-var (
-	ageBinaryHeader = []byte("age-encryption.org/v1\n")
-	ageHeaderMAC    = []byte("\n--- ")
-	ageArmorBegin   = []byte("-----BEGIN AGE ENCRYPTED FILE-----")
-	ageArmorEnd     = []byte("-----END AGE ENCRYPTED FILE-----")
-	base64Line      = regexp.MustCompile(`^[A-Za-z0-9+/]*={0,2}$`)
-	// sops writes an encrypted MAC into every file it encrypts, in each of its formats.
-	sopsMAC   = regexp.MustCompile(`(?m)(?:"mac"\s*:\s*"|^\s*mac:\s*|^\s*mac\s*=\s*"?|^sops_mac=)ENC\[AES256_GCM,`)
-	sopsValue = regexp.MustCompile(`ENC\[AES256_GCM,[^\]]*\]`)
-)
+// cipherFormat recognises an encrypted file format.
+type cipherFormat struct {
+	detect func(data []byte) bool
+	values *regexp.Regexp // encrypted values in an otherwise readable file; nil when the whole file is ciphertext
+}
 
-// encryption reports "age" when data is entirely age ciphertext, "sops" when it's a
-// sops-encrypted file, or "".
-func encryption(data []byte) string {
-	// Binary age: the version line, recipient stanzas, then the header MAC line ("--- …").
-	if bytes.HasPrefix(data, ageBinaryHeader) && bytes.Contains(data[:min(len(data), 64<<10)], ageHeaderMAC) {
-		return "age"
-	}
-	if t := bytes.TrimSpace(data); bytes.HasPrefix(t, ageArmorBegin) && bytes.HasSuffix(t, ageArmorEnd) {
-		body := bytes.TrimSuffix(bytes.TrimPrefix(t, ageArmorBegin), ageArmorEnd)
-		for _, line := range splitLines(bytes.TrimSpace(body)) {
-			if !base64Line.Match(bytes.TrimRight(line, "\r")) {
-				return ""
-			}
+// cipherFormats are the encrypted formats dotsync recognises. They're data: the code above
+// never refers to a format by name.
+var cipherFormats = []cipherFormat{
+	// age, binary: the version line, recipient stanzas, then the header MAC line ("--- …").
+	{detect: func(d []byte) bool {
+		return bytes.HasPrefix(d, []byte("age-encryption.org/v1\n")) && bytes.Contains(d[:min(len(d), 64<<10)], []byte("\n--- "))
+	}},
+	// age, ASCII armor: nothing but base64 between the armor lines.
+	{detect: func(d []byte) bool {
+		return armored(d, []byte("-----BEGIN AGE ENCRYPTED FILE-----"), []byte("-----END AGE ENCRYPTED FILE-----"))
+	}},
+	// sops: every encrypted file carries an encrypted MAC, in each of sops's formats; values are
+	// encrypted individually.
+	{
+		detect: regexp.MustCompile(`(?m)(?:"mac"\s*:\s*"|^\s*mac:\s*|^\s*mac\s*=\s*"?|^sops_mac=)ENC\[AES256_GCM,`).Match,
+		values: regexp.MustCompile(`ENC\[AES256_GCM,[^\]]*\]`),
+	},
+}
+
+func cipherFormatOf(data []byte) *cipherFormat {
+	for i := range cipherFormats {
+		if cipherFormats[i].detect(data) {
+			return &cipherFormats[i]
 		}
-		return "age"
 	}
-	if sopsMAC.Match(data) {
-		return "sops"
+	return nil
+}
+
+var base64Line = regexp.MustCompile(`^[A-Za-z0-9+/]*={0,2}$`)
+
+// armored reports whether data is a single ASCII-armored block containing only base64.
+func armored(data, begin, end []byte) bool {
+	t := bytes.TrimSpace(data)
+	if !bytes.HasPrefix(t, begin) || !bytes.HasSuffix(t, end) {
+		return false
 	}
-	return ""
+	for _, line := range splitLines(bytes.TrimSpace(t[len(begin) : len(t)-len(end)])) {
+		if !base64Line.Match(bytes.TrimRight(line, "\r")) {
+			return false
+		}
+	}
+	return true
 }

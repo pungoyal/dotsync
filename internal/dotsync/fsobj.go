@@ -20,10 +20,26 @@ import (
 
 const maxFileSize = 10 << 20
 
+// Object kinds; files and directories are also the two kinds of manifest entry.
+const (
+	kindFile  = "file"
+	kindDir   = "dir"
+	kindLink  = "link"
+	kindOther = "other"
+)
+
+// Signatures of objects that can't be synced as content.
+const (
+	sigDir   = "d"
+	sigOther = "?"
+)
+
+func isSpecial(sig string) bool { return sig == sigDir || sig == sigOther }
+
 // Obj is a file or symlink as dotsync sees it. Sig identifies type + executable bit + content;
 // an absent object has signature "".
 type Obj struct {
-	Kind string // "file", "link", "dir", "other"
+	Kind string // kindFile, kindLink, kindDir or kindOther
 	Data []byte
 	Exec bool
 	Sig  string
@@ -52,26 +68,26 @@ func notExist(err error) bool {
 	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
-type statID struct {
-	size, mtime int64
-	ino         uint64
+// lstat is os.Lstat with "doesn't exist" reported as (nil, nil) rather than an error.
+func lstat(path string) (os.FileInfo, error) {
+	fi, err := os.Lstat(path)
+	if err != nil && notExist(err) {
+		return nil, nil
+	}
+	return fi, err
 }
 
-func statKey(fi os.FileInfo) statID {
-	id := statID{size: fi.Size(), mtime: fi.ModTime().UnixNano()}
-	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-		id.ino = uint64(st.Ino) //nolint:unconvert // Ino is uint32 on some platforms
-	}
-	return id
+// sameFile reports whether two stats describe the same, unmodified file.
+func sameFile(a, b os.FileInfo) bool {
+	ea, _ := entryFor(a)
+	eb, _ := entryFor(b)
+	return ea == eb
 }
 
 // readObj reads the object at path without following a final symlink. nil if absent.
 func readObj(path string) (*Obj, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		if notExist(err) {
-			return nil, nil
-		}
+	fi, err := lstat(path)
+	if fi == nil || err != nil {
 		return nil, err
 	}
 	switch {
@@ -80,11 +96,11 @@ func readObj(path string) (*Obj, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Obj{Kind: "link", Data: []byte(t), Sig: "l:" + hashBytes([]byte(t))}, nil
+		return &Obj{Kind: kindLink, Data: []byte(t), Sig: "l:" + hashBytes([]byte(t))}, nil
 	case fi.IsDir():
-		return &Obj{Kind: "dir", Sig: "d"}, nil
+		return &Obj{Kind: kindDir, Sig: sigDir}, nil
 	case !fi.Mode().IsRegular():
-		return &Obj{Kind: "other", Sig: "?"}, nil
+		return &Obj{Kind: kindOther, Sig: sigOther}, nil
 	}
 	if fi.Size() > maxFileSize {
 		return nil, fmt.Errorf("%s is larger than %d MiB; not syncing it", tilde(path), maxFileSize>>20)
@@ -94,7 +110,7 @@ func readObj(path string) (*Obj, error) {
 		return nil, err
 	}
 	fi2, err := os.Lstat(path)
-	if err != nil || statKey(fi) != statKey(fi2) || int64(len(data)) != fi.Size() {
+	if err != nil || !sameFile(fi, fi2) || int64(len(data)) != fi.Size() {
 		return nil, &UnstableError{path}
 	}
 	x := fi.Mode()&0o100 != 0
@@ -102,7 +118,7 @@ func readObj(path string) (*Obj, error) {
 	if x {
 		prefix = "fx:"
 	}
-	return &Obj{Kind: "file", Data: data, Exec: x, Sig: prefix + hashBytes(data)}, nil
+	return &Obj{Kind: kindFile, Data: data, Exec: x, Sig: prefix + hashBytes(data)}, nil
 }
 
 func fsyncDir(dir string) {
@@ -118,6 +134,21 @@ func randSuffix() string {
 	return hex.EncodeToString(b)
 }
 
+// writeSynced writes data to f, sets its permissions, flushes it to disk and closes it.
+func writeSynced(f *os.File, data []byte, perm os.FileMode) error {
+	_, err := f.Write(data)
+	if err == nil {
+		err = f.Chmod(perm)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
 func atomicWrite(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -128,21 +159,7 @@ func atomicWrite(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	tmp := f.Name()
-	fail := func(err error) error {
-		f.Close()
-		os.Remove(tmp)
-		return err
-	}
-	if _, err := f.Write(data); err != nil {
-		return fail(err)
-	}
-	if err := f.Sync(); err != nil {
-		return fail(err)
-	}
-	if err := f.Chmod(perm); err != nil {
-		return fail(err)
-	}
-	if err := f.Close(); err != nil {
+	if err := writeSynced(f, data, perm); err != nil {
 		os.Remove(tmp)
 		return err
 	}
@@ -162,17 +179,14 @@ func writeLocal(path string, o *Obj, mode int, strategy string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	existing, err := os.Lstat(path)
-	if err != nil && !notExist(err) {
-		return err
-	}
+	existing, err := lstat(path)
 	if err != nil {
-		existing = nil
+		return err
 	}
 	if existing != nil && existing.IsDir() {
 		return fmt.Errorf("%s is a directory; expected a file", tilde(path))
 	}
-	if o.Kind == "link" {
+	if o.Kind == kindLink {
 		tmp := filepath.Join(dir, fmt.Sprintf(".dotsync-tmp-%d-%s", os.Getpid(), randSuffix()))
 		if err := os.Symlink(string(o.Data), tmp); err != nil {
 			return err
@@ -203,18 +217,7 @@ func writeLocal(path string, o *Obj, mode int, strategy string) error {
 		if err != nil {
 			return err
 		}
-		if _, err := f.Write(o.Data); err != nil {
-			f.Close()
-			return err
-		}
-		if err := f.Sync(); err != nil {
-			f.Close()
-			return err
-		}
-		if err := f.Close(); err != nil {
-			return err
-		}
-		return os.Chmod(path, perm)
+		return writeSynced(f, o.Data, perm)
 	}
 	return atomicWrite(path, o.Data, perm)
 }
@@ -227,7 +230,7 @@ func writeRepo(path string, o *Obj) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if o.Kind == "link" {
+	if o.Kind == kindLink {
 		return os.Symlink(string(o.Data), path)
 	}
 	perm := os.FileMode(0o644)
@@ -241,11 +244,8 @@ func writeRepo(path string, o *Obj) error {
 }
 
 func removePath(path string) error {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		if notExist(err) {
-			return nil
-		}
+	fi, err := lstat(path)
+	if fi == nil || err != nil {
 		return err
 	}
 	if fi.IsDir() {
@@ -373,11 +373,8 @@ func checkAncestors(root, rel string) error {
 	p := root
 	for _, part := range parts[:len(parts)-1] {
 		p = filepath.Join(p, part)
-		fi, err := os.Lstat(p)
-		if err != nil {
-			if notExist(err) {
-				return nil
-			}
+		fi, err := lstat(p)
+		if fi == nil || err != nil {
 			return err
 		}
 		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
@@ -390,12 +387,9 @@ func checkAncestors(root, rel string) error {
 // walkTree lists files and symlinks under root (relative, slash-separated), skipping ignored
 // names. Empty directories are not tracked. A symlinked directory is listed as a symlink.
 func walkTree(root string, patterns []string, skipDirs []string) ([]string, error) {
-	fi, err := os.Lstat(root)
-	if err != nil || !fi.IsDir() {
-		if err != nil && !notExist(err) {
-			return nil, err
-		}
-		return nil, nil
+	fi, err := lstat(root)
+	if fi == nil || err != nil || !fi.IsDir() {
+		return nil, err
 	}
 	var out []string
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {

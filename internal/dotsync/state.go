@@ -237,8 +237,8 @@ type Backups struct {
 }
 
 func (b *Backups) save(path string) (string, error) {
-	if _, err := os.Lstat(path); err != nil {
-		return "", nil
+	if fi, err := lstat(path); fi == nil || err != nil {
+		return "", err // nothing to back up, or a real error: never replace what we couldn't copy
 	}
 	if b.root == "" {
 		b.root = filepath.Join(b.paths.Backups, fmt.Sprintf("%s-%d", time.Now().Format("20060102-150405"), os.Getpid()))

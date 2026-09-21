@@ -1,6 +1,7 @@
 package dotsync
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -54,6 +55,18 @@ func hostname() string {
 }
 
 func osName() string { return runtime.GOOS }
+
+// supportedOS are the operating systems an entry's "os" list may name.
+var supportedOS = []string{"darwin", "linux"}
+
+func validateOS(list []string) error {
+	for _, o := range list {
+		if !containsStr(supportedOS, o) {
+			return fmt.Errorf("--os must be one of %s, not %q", strings.Join(supportedOS, ", "), o)
+		}
+	}
+	return nil
+}
 
 // Paths are all machine-local; none of them is ever synchronized.
 type Paths struct {

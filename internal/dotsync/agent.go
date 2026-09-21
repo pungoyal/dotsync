@@ -27,20 +27,16 @@ func agentCommand(c *Ctx) []string {
 	return []string{exe, "sync", "-q"}
 }
 
-// agentPath gives the agent a PATH that finds git; launchd and cron start with a minimal one.
+// agentPath gives the agent the PATH of the shell that installed it (launchd and cron start
+// with a minimal one): its absolute, existing directories, followed by the system defaults.
 func agentPath() string {
 	var dirs []string
-	if g, err := exec.LookPath("git"); err == nil {
-		dirs = append(dirs, filepath.Dir(g))
-	}
-	dirs = append(dirs, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
-	var out []string
-	for _, d := range dirs {
-		if !containsStr(out, d) {
-			out = append(out, d)
+	for _, d := range append(filepath.SplitList(os.Getenv("PATH")), "/usr/bin", "/bin") {
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() && filepath.IsAbs(d) && !containsStr(dirs, d) {
+			dirs = append(dirs, d)
 		}
 	}
-	return strings.Join(out, ":")
+	return strings.Join(dirs, ":")
 }
 
 // agentEnv is the environment baked into the scheduled job: PATH plus HOME and any XDG base
@@ -204,8 +200,17 @@ func agentInstall(c *Ctx) (string, error) {
 	return def.summary, nil
 }
 
+// pathValue matches the PATH captured in an agent definition (plist, unit file or crontab line).
+var pathValue = regexp.MustCompile(`(PATH</key><string>|PATH=)[^<\s"']*`)
+
+// sameDefinition compares two agent definitions, ignoring the captured PATH: it reflects the
+// shell dotsync was run from, not the dotsync version.
+func sameDefinition(a, b string) bool {
+	return pathValue.ReplaceAllString(a, "$1") == pathValue.ReplaceAllString(b, "$1")
+}
+
 // agentInstalled reports whether a background agent is installed here, and whether its
-// definition is exactly what this version of dotsync would install.
+// definition matches what this version of dotsync would install.
 func agentInstalled(c *Ctx) (installed, current bool) {
 	def, err := desiredAgent(c)
 	if err != nil {
@@ -217,7 +222,7 @@ func agentInstalled(c *Ctx) (installed, current bool) {
 			return false, false
 		}
 		for _, l := range strings.Split(out, "\n") {
-			if l == def.cronLine {
+			if sameDefinition(l, def.cronLine) {
 				return true, true
 			}
 		}
@@ -229,7 +234,7 @@ func agentInstalled(c *Ctx) (installed, current bool) {
 		if err != nil {
 			return false, false
 		}
-		if string(got) != want {
+		if !sameDefinition(string(got), want) {
 			current = false
 		}
 	}
@@ -313,7 +318,7 @@ func setCronLine(line string) error {
 	return nil
 }
 
-func agentUninstall(c *Ctx) string {
+func agentUninstall() string {
 	if osName() == "darwin" {
 		runQuiet("launchctl", "bootout", fmt.Sprintf("gui/%d/%s", os.Getuid(), agentLabel))
 		if err := os.Remove(launchdPlist()); err == nil {
@@ -342,7 +347,7 @@ func agentUninstall(c *Ctx) string {
 	return "removed " + strings.Join(removed, ", ")
 }
 
-func agentStatus(c *Ctx) string {
+func agentStatus() string {
 	if osName() == "darwin" {
 		if _, err := os.Stat(launchdPlist()); err != nil {
 			return "not installed (run `dotsync agent install`)"
@@ -384,9 +389,9 @@ func cmdAgent(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		fmt.Fprintln(stdout, msg)
 	case "uninstall":
-		fmt.Fprintln(stdout, agentUninstall(c))
+		fmt.Fprintln(stdout, agentUninstall())
 	case "status":
-		fmt.Fprintln(stdout, agentStatus(c))
+		fmt.Fprintln(stdout, agentStatus())
 	default:
 		return 2, fmt.Errorf("unknown agent action %q", pos[0])
 	}

@@ -16,6 +16,21 @@ type gitProblem struct {
 	Fix     string
 }
 
+// problem and fix are nil-safe accessors, for when there's nothing to report.
+func (g *gitProblem) problem() string {
+	if g == nil {
+		return ""
+	}
+	return g.Problem
+}
+
+func (g *gitProblem) fix() string {
+	if g == nil {
+		return ""
+	}
+	return g.Fix
+}
+
 // gitFailures maps git's error output to an explanation. Hints are built from the configured
 // remote only; nothing here knows about particular hosts or tools.
 var gitFailures = []struct {
