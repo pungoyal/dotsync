@@ -52,6 +52,38 @@ Many tools can include a second file. Sync the main file and keep a small, unman
 | tmux | `if-shell "test -f ~/.tmux.local.conf" "source ~/.tmux.local.conf"` | `~/.tmux.local.conf` |
 | Neovim | `pcall(require, 'local')` | `~/.config/nvim/lua/local.lua` (add to `ignore`) |
 
+## Tools that write absolute paths
+
+Some tools write the absolute path of whatever program ran them into your config files. When that file syncs to a machine where the program lives somewhere else, the setting breaks there.
+
+The common case is `gh auth setup-git`, which writes
+
+```ini title="~/.gitconfig (written by gh on Linux)"
+[credential "https://github.com"]
+	helper = !/usr/bin/gh auth git-credential
+```
+
+On a Mac, `gh` is usually in `/opt/homebrew/bin`, so git can no longer authenticate to GitHub over HTTPS. If your dotfiles remote uses HTTPS, dotsync can't sync either. `dotsync doctor`, `status` and the agent's notification all name the setting and the file it's in.
+
+Fix it in either of two ways:
+
+- **Refer to the program by name**, so each machine finds its own copy on its `PATH`:
+
+  ```ini title="~/.gitconfig"
+  [credential "https://github.com"]
+  	helper =
+  	helper = !gh auth git-credential
+  ```
+
+- **Keep machine-specific settings in a local file** that isn't synced, and include it from the shared one (see [below](#shared-file-plus-local-overrides)):
+
+  ```ini title="~/.gitconfig"
+  [include]
+  	path = ~/.gitconfig.local
+  ```
+
+Edit the file on the machine where it's broken. The next sync sends the fix everywhere.
+
 ## Machines with different paths
 
 Write targets in a portable form: `~/…`, or `$XDG_CONFIG_HOME/…` if some machines relocate their config directory. Each machine expands them itself. Absolute paths aren't allowed in the manifest, because they differ between machines. See [targets](/dotsync/reference/manifest/#targets).

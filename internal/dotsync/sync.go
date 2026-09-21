@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -276,7 +275,7 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 					}
 					return nil, fmt.Errorf("git push failed: %s", perr)
 				}
-				p.FetchError = ferr
+				p.FetchError, p.GitProblem = lastLine(ferr), diagnoseGit(c, ferr)
 				markWaiting()
 				break
 			}
@@ -297,10 +296,6 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 	}
 	return nil, fmt.Errorf("gave up after %d attempts: the remote kept changing", pushAttempts)
 }
-
-// authFailure recognizes git errors that won't go away without the user's help.
-var authFailure = regexp.MustCompile(`(?i)permission denied|authentication failed|could not read (username|password)|` +
-	`host key verification failed|repository not found|access denied|403|401`)
 
 func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 	prev := st.LastSync
@@ -333,6 +328,7 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 	}
 	res := &SyncResult{
 		SyncSummary: SyncSummary{Time: nowISO(), Outcome: outcome, Online: p.Online, FetchError: p.FetchError,
+			Problem: problemOf(p), Fix: fixOf(p),
 			Commit: commit, Counts: counts, Errors: errs},
 		Items: items,
 	}
@@ -354,9 +350,8 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 		}
 		c.log(line)
 	}
-	if c.Quiet && outcome == "offline" && authFailure.MatchString(p.FetchError) &&
-		(prev == nil || prev.FetchError != p.FetchError) {
-		notify("dotsync: cannot reach your dotfiles repository", p.FetchError+". Run `dotsync status`.")
+	if c.Quiet && p.GitProblem != nil && (prev == nil || prev.Problem != p.GitProblem.Problem) {
+		notify("dotsync can't reach your dotfiles repository", p.GitProblem.Problem+". Run `dotsync doctor` for the fix.")
 	}
 	if len(fresh) > 0 && c.Quiet {
 		var names []string
@@ -398,6 +393,20 @@ func housekeeping(c *Ctx, st *State, now time.Time) {
 			c.log("error        git gc: " + lastLine(r.Stderr))
 		}
 	}
+}
+
+func problemOf(p *Plan) string {
+	if p.GitProblem == nil {
+		return ""
+	}
+	return p.GitProblem.Problem
+}
+
+func fixOf(p *Plan) string {
+	if p.GitProblem == nil {
+		return ""
+	}
+	return p.GitProblem.Fix
 }
 
 func notify(title, message string) {

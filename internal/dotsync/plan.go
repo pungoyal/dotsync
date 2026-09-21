@@ -54,7 +54,8 @@ type skippedEntry struct {
 
 type Plan struct {
 	Online          bool
-	FetchError      string
+	FetchError      string      // last line of git's error, for display
+	GitProblem      *gitProblem // what the user needs to do, if anything
 	BaseCommit      string
 	Manifest        *Manifest
 	ManifestChanged bool
@@ -314,7 +315,11 @@ func resolveEntries(c *Ctx, p *Plan) {
 func buildPlan(c *Ctx, st *State, fetch bool) (*Plan, error) {
 	p := &Plan{EntryErrors: map[string]string{}}
 	if fetch {
-		p.Online, p.FetchError = c.fetch()
+		var out string
+		p.Online, out = c.fetch()
+		if !p.Online {
+			p.FetchError, p.GitProblem = lastLine(out), diagnoseGit(c, out)
+		}
 	}
 	c.cache = newStatCache(st.StatCache)
 	head, base, err := c.headAndOrigin()

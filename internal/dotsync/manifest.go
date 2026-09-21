@@ -41,7 +41,8 @@ func loadManifest(repo string) (*Manifest, error) {
 	dec.UseNumber()
 	var raw any
 	if err := dec.Decode(&raw); err != nil {
-		return nil, fmt.Errorf("%s in the repository is not valid JSON (%w); nothing was changed", manifestName, err)
+		return nil, fmt.Errorf("%s in the repository is not valid JSON (%w); nothing was changed. "+
+			"Fix it in any clone of your dotfiles repository and push; the next sync picks it up", manifestName, err)
 	}
 	m := &Manifest{Top: map[string]any{}}
 	var list []any

@@ -139,9 +139,9 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 		d.add(checkOK, "remote reachable without prompts", "", "")
 	case r.Code == 0:
 		d.add(checkFail, "remote has no branch '"+c.Config.Branch+"'", "", "check the branch in "+tilde(c.Paths.Config))
-	case authFailure.MatchString(r.Stderr):
-		d.add(checkFail, "remote rejects authentication", lastLine(r.Stderr),
-			"make `git ls-remote "+c.Config.Remote+"` work without a prompt: https://pungoyal.github.io/dotsync/guides/background-agent/#git-access-without-prompts")
+	case diagnoseGit(c, r.Stderr) != nil:
+		gp := diagnoseGit(c, r.Stderr)
+		d.add(checkFail, "remote not reachable: "+gp.Problem, lastLine(r.Stderr), gp.Fix)
 	default:
 		d.add(checkWarn, "remote unreachable right now", lastLine(r.Stderr), "check your network; changes wait until it's reachable")
 	}
