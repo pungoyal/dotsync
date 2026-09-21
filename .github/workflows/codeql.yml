@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      statuses: write # report the result on dispatched runs (the release PR)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,3 +30,8 @@ jobs:
           languages: go
           build-mode: autobuild
       - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+      - if: always() && github.event_name == 'workflow_dispatch'
+        uses: ./.github/actions/commit-status
+        with:
+          context: codeql
+          result: ${{ job.status }}

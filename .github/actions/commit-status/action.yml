@@ -1,0 +1,28 @@
+name: commit status
+description: >
+  Report a result as a commit status on the checked commit. Runs started by workflow_dispatch
+  don't appear in a pull request's checks; commit statuses do. The release workflow dispatches
+  CI onto the release PR, so this is how its results reach the PR.
+inputs:
+  context:
+    description: Status name shown on the pull request
+    required: true
+  result:
+    description: A job result (success, failure, cancelled or skipped)
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CONTEXT: ${{ inputs.context }}
+        RESULT: ${{ inputs.result }}
+        URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        case "$RESULT" in
+          success) state=success desc="passed" ;;
+          *)       state=failure desc="$RESULT" ;;
+        esac
+        gh api --silent "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+          -f state="$state" -f context="$CONTEXT" -f description="$desc" -f target_url="$URL"
