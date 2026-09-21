@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.1](https://github.com/pungoyal/dotsync/compare/v0.4.0...v0.4.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* explain git failures that need the user, with the exact fix ([#17](https://github.com/pungoyal/dotsync/issues/17)) ([11cd1a7](https://github.com/pungoyal/dotsync/commit/11cd1a7a207ac5e90d3da240e15bc411883b5401))
+
+
+### Performance
+
+* faster CI (parallel fuzz, per-job build caches, fewer git processes) ([#15](https://github.com/pungoyal/dotsync/issues/15)) ([73cca51](https://github.com/pungoyal/dotsync/commit/73cca518337fdbe889e9ea8cfc48ea3543f639a2))
+
 ## [0.4.0](https://github.com/pungoyal/dotsync/compare/v0.3.0...v0.4.0) (2026-09-21)
 
 
