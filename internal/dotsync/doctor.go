@@ -1,6 +1,7 @@
 package dotsync
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -84,6 +85,16 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 	}()
 
 	d.add(checkOK, versionString(), "", "")
+	if cur := currentVersion(); cur != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if latest, err := latestRelease(ctx); err == nil {
+			l, _ := parseSemver(latest)
+			if c, _ := parseSemver(cur); semverLess(c, l) {
+				d.add(checkInfo, "update available: "+cur+" → "+strings.TrimPrefix(latest, "v"), "", "dotsync update")
+			}
+		}
+		cancel()
+	}
 
 	// git
 	if out, err := exec.Command("git", "--version").Output(); err != nil {

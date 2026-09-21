@@ -56,6 +56,7 @@ usage: dotsync <command> [options]
 setup
   init <git-url>          set up this machine: clone, first sync, install the background agent
   doctor                  check the setup and explain how to fix problems
+  update                  install the latest release (verified)
   agent install|uninstall|status
 
 managing files (changes apply to every machine)
@@ -118,7 +119,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	commands := map[string]func([]string, io.Writer, io.Writer) (int, error){
 		"init": cmdInit, "add": cmdAdd, "remove": cmdRemove, "rm": cmdRemove, "describe": cmdDescribe,
-		"set": cmdSet, "exclude": cmdExclude, "include": cmdInclude, "doctor": cmdDoctor,
+		"set": cmdSet, "exclude": cmdExclude, "include": cmdInclude, "doctor": cmdDoctor, "update": cmdUpdate,
 		"sync": cmdSync, "status": cmdStatus, "st": cmdStatus, "list": cmdList, "ls": cmdList,
 		"diff": cmdDiff, "resolve": cmdResolve, "log": cmdLog, "agent": cmdAgent,
 	}

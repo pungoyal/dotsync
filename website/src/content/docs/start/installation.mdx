@@ -97,6 +97,25 @@ dotsync 0.1.0 (289c20a, 2026-09-21T06:18:53Z) go1.27.1 darwin/arm64
 `dotsync init` also copies the binary to `~/.local/bin/dotsync`, which is where the background agent runs it from. You don't need to install it there yourself.
 </Aside>
 
+## Update
+
+```sh
+dotsync update           # install the latest release (checksum + provenance verified)
+dotsync update --check   # just tell me whether there's a newer one
+```
+
+`dotsync doctor` also tells you when an update is available. Releases before 0.3.0 don't have `update`: run the install script once more to get it.
+
+## Stuck downloading?
+
+The install script shows a progress bar, gives up on a stalled connection after about 20 seconds, and retries, including once over IPv4. If it keeps failing, check your connection to GitHub's download host, which is separate from `github.com`:
+
+```sh
+curl -v -o /dev/null https://github.com/pungoyal/dotsync/releases/latest/download/checksums.txt
+```
+
+If that also hangs (often an IPv6 route or a proxy), try `curl -4 …` to force IPv4, or download the archive from the [releases page](https://github.com/pungoyal/dotsync/releases/latest) in a browser.
+
 ## Next
 
 Continue with the [quick start](/dotsync/start/quick-start/).

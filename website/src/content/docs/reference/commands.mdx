@@ -17,6 +17,7 @@ dotsync <command> [flags] [arguments]
 |---|---|---|
 | [`init`](#init) | | set up this machine |
 | [`doctor`](#doctor) | | check the setup and explain how to fix problems |
+| [`update`](#update) | | install the latest release, verified |
 | [`add`](#add) | | start managing files or directories, on every machine |
 | [`remove`](#remove) | `rm` | stop managing entries, on every machine |
 | [`set`](#set) | | change an entry's ignore patterns, OS, permissions, write strategy or description |
@@ -80,6 +81,22 @@ dotsync doctor
 ```
 
 Exits `1` if any check fails (`✗`); warnings (`!`) don't change the exit status.
+
+## update
+
+```text
+dotsync update [--check] [--version vX.Y.Z] [--require-attestation]
+```
+
+Replaces the running binary with the latest release, applying the same checks as the install script. It verifies the **SHA-256 checksum**, plus the **signed build provenance** when the GitHub CLI is available, before replacing anything. The binary is swapped atomically. If the background agent runs a different copy (`~/.local/bin/dotsync`), that copy is updated too, so the next scheduled sync already uses the new version.
+
+| Flag | Description |
+|---|---|
+| `--check` | only report whether a newer release exists |
+| `--version vX.Y.Z` | install a specific release instead of the latest, including an older one |
+| `--require-attestation` | refuse to update unless the build provenance verifies |
+
+`dotsync doctor` also mentions when an update is available. Development builds (`make build`) only update with an explicit `--version`.
 
 ## add
 
