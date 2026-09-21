@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/pungoyal/dotsync/compare/v0.4.1...v0.5.0) (2026-09-21)
+
+
+### Features
+
+* dotsync help &lt;command&gt;, from a single command table ([#22](https://github.com/pungoyal/dotsync/issues/22)) ([0593cf6](https://github.com/pungoyal/dotsync/commit/0593cf66ff796b6d5788f0d456547c6ff97d982a))
+
 ## [0.4.1](https://github.com/pungoyal/dotsync/compare/v0.4.0...v0.4.1) (2026-09-21)
 
 
