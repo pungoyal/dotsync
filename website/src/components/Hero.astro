@@ -13,6 +13,8 @@ const PAGE_TITLE_ID = '_top'; // Starlight's id for the page title (its skip lin
 const { data } = Astro.locals.starlightRoute.entry;
 const { title = data.title, tagline } = data.hero || {};
 const install = 'curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh';
+// Shown in full rather than scrolled: on narrow screens it wraps after a slash, never mid-word.
+const installHTML = install.replaceAll('/', '/<wbr>');
 ---
 
 <div class="hero">
@@ -32,7 +34,7 @@ const install = 'curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/m
 		<div class="install">
 			<span class="label">Install</span>
 			<div class="line">
-				<code>{install}</code>
+				<code set:html={installHTML} />
 				<button type="button" class="copy-btn" data-copy={install} aria-label="Copy the install command" hidden>
 					<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path></svg>
 				</button>
@@ -178,7 +180,7 @@ status
 	}
 	.line {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 0.5rem;
 		padding: 0.55rem 0.55rem 0.55rem 0.9rem;
 		border: 1px solid var(--ds-border);
@@ -188,12 +190,11 @@ status
 	.line code {
 		flex: 1;
 		min-width: 0;
-		overflow-x: auto;
-		white-space: nowrap;
+		overflow-wrap: anywhere;
 		font-family: var(--sl-font-mono);
 		font-size: 0.8rem;
+		line-height: 1.6;
 		color: var(--sl-color-white);
-		scrollbar-width: thin;
 	}
 	.line code::before {
 		content: '$ ' / '';

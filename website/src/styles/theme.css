@@ -423,11 +423,16 @@ h1#_top {
 	gap: 1rem;
 }
 
-.ds-fit > div {
-	padding: 1.3rem 1.5rem 0.6rem;
+.sl-markdown-content .ds-fit > div {
+	margin: 0; /* not Starlight's spacing between consecutive blocks, which pushed the second card down */
+	padding: 1.3rem 1.5rem;
 	border: 1px solid var(--ds-border);
 	border-radius: var(--ds-radius);
 	background: var(--ds-surface);
+}
+
+.sl-markdown-content .ds-fit > div > :last-child {
+	margin-bottom: 0;
 }
 
 .ds-fit > div:first-child {
@@ -444,5 +449,10 @@ h1#_top {
 }
 
 .sl-markdown-content .ds-fit ul {
+	margin-top: 0;
 	padding-inline-start: 1.1rem;
+}
+
+.sl-markdown-content .ds-fit li + li {
+	margin-top: 0.4rem;
 }
