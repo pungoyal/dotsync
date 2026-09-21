@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -91,7 +92,11 @@ func configureRepo(g *Git) error {
 		{"core.filemode", "true"},
 		{"core.symlinks", "true"},
 		{"core.hooksPath", "/dev/null"},
-		{"gc.auto", "256"},
+		// No background or randomly-triggered work: dotsync runs `git gc` itself once a week.
+		{"gc.auto", "0"},
+		{"maintenance.auto", "false"},
+		// No disk writes when nothing changed.
+		{"core.logAllRefUpdates", "false"},
 	}
 	for _, kv := range settings {
 		if _, err := g.Must("config", kv[0], kv[1]); err != nil {
@@ -103,7 +108,13 @@ func configureRepo(g *Git) error {
 
 func (c *Ctx) fetch() (bool, string) {
 	b := c.Config.Branch
-	r := c.Git.Try("fetch", "-q", "--prune", "origin", fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", b, b))
+	refspec := fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", b, b)
+	// --no-write-fetch-head avoids a disk write on every fetch (git 2.29+); older git gets a retry
+	// without it.
+	r := c.Git.Try("fetch", "-q", "--prune", "--no-tags", "--no-write-fetch-head", "origin", refspec)
+	if r.Code != 0 && strings.Contains(r.Stderr, "no-write-fetch-head") {
+		r = c.Git.Try("fetch", "-q", "--prune", "--no-tags", "origin", refspec)
+	}
 	if r.Code == 0 {
 		return true, ""
 	}
@@ -125,6 +136,36 @@ func (c *Ctx) push() (bool, string) {
 	_, _ = c.Git.Must("update-ref", "refs/remotes/origin/"+b, "HEAD")
 	return true, ""
 }
+
+// headAndOrigin returns the cache clone's HEAD and the remote branch commit in one git call.
+func (c *Ctx) headAndOrigin() (string, string, error) {
+	b := c.Config.Branch
+	r := c.Git.Try("rev-parse", "HEAD^{commit}", "refs/remotes/origin/"+b+"^{commit}")
+	lines := strings.Fields(r.Stdout)
+	if len(lines) == 2 {
+		return lines[0], lines[1], nil
+	}
+	origin, err := c.originCommit()
+	return "", origin, err
+}
+
+// The dirty marker records that the cache clone's working tree may differ from HEAD. It is
+// created before dotsync modifies the working tree and removed after a reset, so a crash at any
+// point leaves it in place and the next sync resets.
+func (c *Ctx) dirtyMarker() string { return filepath.Join(c.Paths.Repo, ".git", "dotsync-dirty") }
+
+func (c *Ctx) repoDirty() bool {
+	_, err := os.Stat(c.dirtyMarker())
+	return err == nil || !notExist(err)
+}
+
+func (c *Ctx) markRepoDirty() {
+	if f, err := os.OpenFile(c.dirtyMarker(), os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+		f.Close()
+	}
+}
+
+func (c *Ctx) markRepoClean() { _ = os.Remove(c.dirtyMarker()) }
 
 func (c *Ctx) originCommit() (string, error) {
 	b := c.Config.Branch

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -969,5 +970,120 @@ func TestEmbeddedIcon(t *testing.T) {
 	}
 	if !isWithin(p, NewPaths().DataDir) {
 		t.Fatalf("icon installed outside dotsync's data dir: %s", p)
+	}
+}
+
+// ---------------------------------------------------------------- efficiency
+
+func TestIdleSyncWritesNothing(t *testing.T) {
+	w := newWorld(t)
+	a := w.machine("alpha")
+	a.init()
+	a.write(".config/nvim/init.lua", "x\n")
+	a.write(".vimrc", "set nu\n")
+	a.ok("add", a.path(".config/nvim"), a.path(".vimrc"))
+	a.ok("sync") // settle: housekeeping, caches
+	a.ok("sync")
+
+	state := a.path(".local/state/dotsync/state.json")
+	logf := a.path(".local/state/dotsync/sync.log")
+	repo := a.path(".local/share/dotsync/repo/.git")
+	read := func(p string) string { b, _ := os.ReadFile(p); return string(b) }
+	mtime := func(p string) time.Time { fi, _ := os.Stat(p); return fi.ModTime() }
+	before := map[string]string{"state": read(state), "log": read(logf)}
+	indexM, headLog := mtime(filepath.Join(repo, "index")), read(filepath.Join(repo, "logs", "HEAD"))
+	os.Remove(filepath.Join(repo, "FETCH_HEAD"))
+	time.Sleep(20 * time.Millisecond)
+
+	a.ok("sync")
+	if read(state) != before["state"] {
+		t.Error("state.json was rewritten by a sync that changed nothing")
+	}
+	if read(logf) != before["log"] {
+		t.Errorf("sync.log grew on a sync that changed nothing:\n%s", strings.TrimPrefix(read(logf), before["log"]))
+	}
+	if !mtime(filepath.Join(repo, "index")).Equal(indexM) {
+		t.Error("git index was rewritten")
+	}
+	if read(filepath.Join(repo, "logs", "HEAD")) != headLog {
+		t.Error("reflog was written")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "FETCH_HEAD")); err == nil {
+		t.Error("FETCH_HEAD was written")
+	}
+
+	// And a real change is still picked up immediately.
+	a.write(".vimrc", "set rnu\n")
+	a.ok("sync")
+	if w.remoteFile("vimrc") != "set rnu\n" {
+		t.Fatal("change not synced")
+	}
+}
+
+func TestStatCacheDetectsChangesWithRestoredMtime(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f")
+	os.WriteFile(p, []byte("aaaa\n"), 0o644)
+	old := time.Now().Add(-time.Hour)
+	os.Chtimes(p, old, old)
+
+	sc := newStatCache(nil)
+	sc.now = time.Now().Add(time.Minute) // treat current timestamps as settled
+	first, _ := sc.obj(p)
+	if first.Data == nil {
+		t.Fatal("first read must hash the file")
+	}
+	second, _ := sc.obj(p)
+	if second.Data != nil || second.Sig != first.Sig {
+		t.Fatal("unchanged file should be answered from the cache")
+	}
+	// Same size, mtime put back: ctime still changes, so the edit is seen.
+	os.WriteFile(p, []byte("bbbb\n"), 0o644)
+	os.Chtimes(p, old, old)
+	third, _ := sc.obj(p)
+	if third.Data == nil || third.Sig == first.Sig {
+		t.Fatal("edit with restored mtime was not detected")
+	}
+	// chmod changes the signature too (executable bit).
+	os.Chmod(p, 0o755)
+	fourth, _ := sc.obj(p)
+	if fourth.Sig == third.Sig {
+		t.Fatal("chmod +x not detected")
+	}
+}
+
+func TestStatCacheIgnoresRecentFiles(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "f")
+	os.WriteFile(p, []byte("x"), 0o644)
+	sc := newStatCache(nil)
+	sc.obj(p)
+	if again, _ := sc.obj(p); again.Data == nil {
+		t.Fatal("a file modified within the racy window must always be re-read")
+	}
+}
+
+func TestHousekeepingIsScheduled(t *testing.T) {
+	w := newWorld(t)
+	a := w.machine("alpha")
+	a.init()
+	a.activate()
+	c, _ := newCtx(true, true, io.Discard, io.Discard)
+	st, _ := loadState(c)
+	if st.LastGC == "" || st.LastBackupPrune == "" || st.RepoConfig != repoConfigVersion {
+		t.Fatalf("housekeeping didn't run on first sync: %+v", st)
+	}
+	day := time.Date(2026, 9, 21, 12, 0, 0, 0, time.Local)
+	st.LastGC, st.LastBackupPrune = "2026-09-20", "2026-09-21"
+	housekeeping(c, st, day)
+	if st.LastGC != "2026-09-20" {
+		t.Fatal("gc ran again within a week")
+	}
+	housekeeping(c, st, day.AddDate(0, 0, 5))
+	if st.LastGC != "2026-09-20" || st.LastBackupPrune != "2026-09-26" {
+		t.Fatalf("after 5 days: gc=%s prune=%s", st.LastGC, st.LastBackupPrune)
+	}
+	housekeeping(c, st, day.AddDate(0, 0, 6))
+	if st.LastGC != "2026-09-27" || st.LastBackupPrune != "2026-09-27" { // a week later: both due
+		t.Fatalf("gc/prune not rescheduled: gc=%s prune=%s", st.LastGC, st.LastBackupPrune)
 	}
 }

@@ -21,6 +21,29 @@ dotsync agent install      # (re)install, e.g. after changing the interval
 dotsync agent uninstall
 ```
 
+## Resource use
+
+The agent is built to be invisible on a laptop battery and predictable in what it does.
+
+**When nothing changed**, which is almost every run, a sync:
+
+- takes about 60–70 ms, and runs 2 `git` processes (`fetch` and `rev-parse`)
+- **writes nothing to disk**: no log line, no state rewrite (only the state file's timestamp is touched), no git index, reflog or `FETCH_HEAD` writes
+- re-reads **no file contents**: files whose size, modification time, change time, inode and mode are unchanged are recognised from a cache. As in git, files modified in the last two seconds are always re-read.
+
+**Priority:** it runs at background priority. On macOS that means launchd `ProcessType Background`, low-priority I/O and `Nice 10`. On Linux it means the `idle` CPU and I/O scheduling classes. It uses a single OS thread with a 64 MiB soft memory limit, and its peak memory is about 16 MiB for the fraction of a second it runs.
+
+**No randomness:**
+
+- Syncs run on a fixed interval.
+- The systemd timer has `RandomizedDelaySec=0`, with a fixed 1-minute accuracy window so systemd can batch the wake-up with others.
+- launchd never wakes a sleeping Mac for it. A run missed during sleep happens once on wake.
+- Housekeeping runs on a fixed calendar instead of whenever git decides:
+  - backups are pruned at most once a day
+  - the cache clone gets a full reset at least once a day, and `git gc` once a week
+  - git's own automatic gc and maintenance are turned off
+- Push retries after another machine pushes first happen immediately, with no random back-off.
+
 ## Change the interval
 
 Set `interval` (in seconds) in `~/.config/dotsync/config.json`, then run `dotsync agent install`. With cron the interval is rounded to whole minutes.

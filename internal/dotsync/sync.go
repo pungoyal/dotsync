@@ -79,11 +79,13 @@ func executeLocal(c *Ctx, st *State, p *Plan, backups *Backups) []*Item {
 				if sigOf(lobj) != it.L {
 					return &UnstableError{it.Local}
 				}
+				c.markRepoDirty()
 				if err := writeRepo(it.Repo, lobj); err != nil {
 					return err
 				}
 				staged = append(staged, it)
 			case actDeleteRepo:
+				c.markRepoDirty()
 				if err := removePath(it.Repo); err != nil {
 					return err
 				}
@@ -115,8 +117,11 @@ func recordConflicts(c *Ctx, st *State, p *Plan) []ConflictInfo {
 			fresh = append(fresh, info)
 		}
 		cur[it.Key()] = info
+		copyPath := filepath.Join(c.Paths.Conflicts, filepath.FromSlash(it.Key()))
 		if robj, err := readObj(it.Repo); err == nil && robj != nil {
-			_ = writeRepo(filepath.Join(c.Paths.Conflicts, filepath.FromSlash(it.Key())), robj)
+			if cur, _ := readObj(copyPath); sigOf(cur) != robj.Sig { // don't rewrite an unchanged copy
+				_ = writeRepo(copyPath, robj)
+			}
 		}
 	}
 	if stale, err := walkTree(c.Paths.Conflicts, nil, nil); err == nil {
@@ -211,10 +216,19 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 		return nil, err
 	}
 	defer func() {
-		if serr := saveState(c, st); serr != nil && err == nil {
+		if c.cache != nil && (c.cache.changed || len(c.cache.used) != len(st.StatCache)) {
+			st.StatCache = c.cache.snapshot()
+		}
+		if serr := saveStateIfChanged(c, st); serr != nil && err == nil {
 			err = serr
 		}
 	}()
+	if st.RepoConfig < repoConfigVersion {
+		if err := configureRepo(c.Git); err != nil {
+			return nil, err
+		}
+		st.RepoConfig = repoConfigVersion
+	}
 	backups := &Backups{paths: c.Paths}
 	for attempt := 0; attempt < pushAttempts; attempt++ {
 		p, err := buildPlan(c, st, true)
@@ -224,14 +238,19 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 		staged := executeLocal(c, st, p, backups)
 		dropFailedOps(st, p.OpErrors)
 		if p.ManifestChanged {
+			c.markRepoDirty()
 			if err := saveManifest(c.Paths.Repo, p.Manifest); err != nil {
 				return nil, err
 			}
 		}
-		if _, err := c.Git.Must("add", "-A", "--", "."); err != nil {
-			return nil, err
+		// Only ask git about the working tree if this pass changed it.
+		dirty := false
+		if len(staged) > 0 || p.ManifestChanged || len(p.AppliedOps) > 0 {
+			if _, err := c.Git.Must("add", "-A", "--", "."); err != nil {
+				return nil, err
+			}
+			dirty = c.Git.Try("diff", "--cached", "--quiet").Code != 0
 		}
-		dirty := c.Git.Try("diff", "--cached", "--quiet").Code != 0
 		outcome, commit := "ok", ""
 		markWaiting := func() {
 			outcome = "offline"
@@ -262,6 +281,7 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 				break
 			}
 			commit, _ = c.Git.Must("rev-parse", "--short", "HEAD")
+			c.markRepoClean() // everything in the working tree is now committed and pushed
 			for _, it := range staged {
 				sig := it.L
 				if it.Action == actDeleteRepo {
@@ -272,13 +292,7 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 			clearOps(st, p.AppliedOps)
 		}
 		res := finish(c, st, p, outcome, commit)
-		if days := c.Config.backupRetention(); days > 0 {
-			if n, err := pruneBackups(c.Paths.Backups, time.Duration(days)*24*time.Hour, time.Now()); err != nil {
-				c.log("error        pruning backups: " + err.Error())
-			} else if n > 0 {
-				c.log(fmt.Sprintf("pruned %d backup file(s) older than %d days", n, days))
-			}
-		}
+		housekeeping(c, st, time.Now())
 		return res, nil
 	}
 	return nil, fmt.Errorf("gave up after %d attempts: the remote kept changing", pushAttempts)
@@ -329,14 +343,17 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 	for _, e := range errs {
 		c.log("error        " + e)
 	}
-	line := "sync " + outcome
-	if commit != "" {
-		line += " pushed " + commit
+	// A sync that changed nothing isn't logged, so an idle machine never writes to the log.
+	if len(items) > 0 || len(errs) > 0 || commit != "" || prev == nil || prev.Outcome != outcome || prev.FetchError != p.FetchError {
+		line := "sync " + outcome
+		if commit != "" {
+			line += " pushed " + commit
+		}
+		if outcome == "offline" {
+			line += " (" + p.FetchError + ")"
+		}
+		c.log(line)
 	}
-	if outcome == "offline" {
-		line += " (" + p.FetchError + ")"
-	}
-	c.log(line)
 	if c.Quiet && outcome == "offline" && authFailure.MatchString(p.FetchError) &&
 		(prev == nil || prev.FetchError != p.FetchError) {
 		notify("dotsync: cannot reach your dotfiles repository", p.FetchError+". Run `dotsync status`.")
@@ -353,6 +370,34 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 		notify("dotsync: conflict", "Changed here and on another machine: "+strings.Join(names, ", ")+". Run `dotsync status`.")
 	}
 	return res
+}
+
+// repoConfigVersion is bumped whenever configureRepo changes, so existing installs pick up new
+// git settings on their next sync.
+const repoConfigVersion = 2
+
+// housekeeping runs on a fixed calendar, never at random: backups are pruned at most once a day
+// and the cache clone is garbage-collected at most once a week.
+func housekeeping(c *Ctx, st *State, now time.Time) {
+	today := now.Format("2006-01-02")
+	if days := c.Config.backupRetention(); days > 0 && st.LastBackupPrune != today {
+		if n, err := pruneBackups(c.Paths.Backups, time.Duration(days)*24*time.Hour, now); err != nil {
+			c.log("error        pruning backups: " + err.Error())
+		} else {
+			st.LastBackupPrune = today
+			if n > 0 {
+				c.log(fmt.Sprintf("pruned %d backup file(s) older than %d days", n, days))
+			}
+		}
+	}
+	last, err := time.Parse("2006-01-02", st.LastGC)
+	if err != nil || now.Sub(last) >= 7*24*time.Hour {
+		if r := c.Git.Try("gc", "--quiet"); r.Code == 0 {
+			st.LastGC = today
+		} else {
+			c.log("error        git gc: " + lastLine(r.Stderr))
+		}
+	}
 }
 
 func notify(title, message string) {
