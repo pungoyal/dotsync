@@ -3,11 +3,13 @@ package dotsync
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // world is a shared bare remote plus any number of simulated machines, each with its own $HOME.
@@ -764,5 +766,193 @@ func TestGlobNonASCII(t *testing.T) {
 		if got := globMatch(c.pattern, c.s); got != c.want {
 			t.Errorf("globMatch(%q, %q) = %v, want %v", c.pattern, c.s, got, c.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------- 0.2.0: set, exclude/include, backups, doctor
+
+func manifestEntry(t *testing.T, w *world, source string) map[string]any {
+	t.Helper()
+	var m struct{ Entries []map[string]any }
+	if err := json.Unmarshal([]byte(w.remoteManifest()), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range m.Entries {
+		if e["source"] == source {
+			return e
+		}
+	}
+	t.Fatalf("no entry %q in manifest", source)
+	return nil
+}
+
+func TestSetChangesEntryEverywhere(t *testing.T) {
+	w := newWorld(t)
+	a, b := w.machine("alpha"), w.machine("beta")
+	a.init()
+	a.write(".config/nvim/init.lua", "x\n")
+	a.write(".config/nvim/lazy-lock.json", "{}\n")
+	a.ok("add", a.path(".config/nvim"))
+	b.init()
+	b.expect(".config/nvim/lazy-lock.json", "{}\n")
+
+	a.ok("set", "~/.config/nvim", "--ignore", "lazy-lock.json", "-d", "Neovim", "--mode", "0600")
+	e := manifestEntry(t, w, "nvim")
+	if e["description"] != "Neovim" || e["mode"] != "0600" || fmt.Sprint(e["ignore"]) != "[lazy-lock.json]" {
+		t.Fatalf("entry = %v", e)
+	}
+	// The ignored file is no longer managed: edits to it stay local on each machine.
+	b.write(".config/nvim/lazy-lock.json", "{\"beta\":1}\n")
+	b.ok("sync")
+	a.ok("sync")
+	a.expect(".config/nvim/lazy-lock.json", "{}\n")
+
+	a.ok("set", "nvim", "--unignore", "lazy-lock.json", "--no-mode")
+	e = manifestEntry(t, w, "nvim")
+	if _, ok := e["ignore"]; ok {
+		t.Fatalf("ignore not removed: %v", e)
+	}
+	if _, ok := e["mode"]; ok {
+		t.Fatalf("mode not removed: %v", e)
+	}
+
+	// Invalid values are refused before anything is queued.
+	if code, out := a.run("set", "nvim", "--mode", "999"); code == 0 || !strings.Contains(out, "octal") {
+		t.Fatalf("bad mode accepted (%d): %s", code, out)
+	}
+	if code, _ := a.run("set", "nvim"); code != 2 {
+		t.Fatalf("set with no changes: exit %d", code)
+	}
+}
+
+func TestSetOSSkipsOtherMachines(t *testing.T) {
+	w := newWorld(t)
+	a := w.machine("alpha")
+	a.init()
+	a.write(".other", "x\n")
+	a.ok("add", a.path(".other"))
+	other := "linux"
+	if osName() == "linux" {
+		other = "darwin"
+	}
+	a.ok("set", "other", "--os", other)
+	if s := entryStatusOf(a.statusJSON(), "other"); s != "skipped" {
+		t.Fatalf("status = %q", s)
+	}
+	a.ok("set", "other", "--any-os")
+	if s := entryStatusOf(a.statusJSON(), "other"); s != "ok" {
+		t.Fatalf("status after --any-os = %q", s)
+	}
+}
+
+func TestConcurrentIgnoreEditsCombine(t *testing.T) {
+	w := newWorld(t)
+	a, b := w.machine("alpha"), w.machine("beta")
+	a.init()
+	a.write(".config/app/x", "x\n")
+	a.ok("add", a.path(".config/app"))
+	b.init()
+	a.ok("set", "--no-sync", "app", "--ignore", "cache")
+	b.ok("set", "--no-sync", "app", "--ignore", "logs")
+	a.ok("sync")
+	b.ok("sync")
+	if got := fmt.Sprint(manifestEntry(t, w, "app")["ignore"]); got != "[cache logs]" {
+		t.Fatalf("ignore = %s", got)
+	}
+}
+
+func TestExcludeAndInclude(t *testing.T) {
+	w := newWorld(t)
+	a, b := w.machine("alpha"), w.machine("beta")
+	a.init()
+	a.write(".tmux.conf", "one\n")
+	a.ok("add", a.path(".tmux.conf"))
+	b.init()
+
+	b.ok("exclude", "~/.tmux.conf")
+	if s := entryStatusOf(b.statusJSON(), "tmux.conf"); s != "skipped" {
+		t.Fatalf("status = %q", s)
+	}
+	a.write(".tmux.conf", "two\n")
+	a.ok("sync")
+	b.ok("sync")
+	b.expect(".tmux.conf", "one\n") // excluded: left alone
+	if out := b.ok("exclude"); !strings.Contains(out, "tmux.conf") {
+		t.Fatalf("exclude list: %s", out)
+	}
+
+	b.ok("include", "tmux.conf")
+	b.expect(".tmux.conf", "two\n") // managed again; the old copy was backed up
+	if got := b.backups(".tmux.conf"); len(got) != 1 || got[0] != "one\n" {
+		t.Fatalf("backups = %q", got)
+	}
+	if code, _ := b.run("include", "tmux.conf"); code != 0 {
+		t.Fatal("include of a non-excluded entry should be a harmless no-op")
+	}
+	if code, _ := b.run("exclude", "~/.nope"); code == 0 {
+		t.Fatal("exclude of an unknown entry accepted")
+	}
+}
+
+func TestPruneBackups(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.Local)
+	mk := func(run, rel, content string) {
+		p := filepath.Join(root, run, rel)
+		os.MkdirAll(filepath.Dir(p), 0o700)
+		os.WriteFile(p, []byte(content), 0o600)
+	}
+	mk("20260101-100000-1", ".zshrc", "very old zshrc")    // old, but a newer backup exists → pruned
+	mk("20260101-100000-1", ".vimrc", "only vimrc backup") // old, but the only copy → kept
+	mk("20260601-100000-2", ".zshrc", "old zshrc")         // old, newer exists → pruned
+	mk("20260601-100000-2", ".zshrc.~1~", "old zshrc 2")   // same file, same run → pruned
+	mk("20260915-100000-3", ".zshrc", "recent zshrc")      // recent → kept
+	mk("not-a-run", "x", "ignored")
+
+	n, err := pruneBackups(root, 90*24*time.Hour, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("removed %d files, want 3", n)
+	}
+	exists := func(p string) bool { _, err := os.Stat(filepath.Join(root, p)); return err == nil }
+	for p, want := range map[string]bool{
+		"20260101-100000-1/.zshrc": false, "20260101-100000-1/.vimrc": true,
+		"20260601-100000-2": false, "20260915-100000-3/.zshrc": true, "not-a-run/x": true,
+	} {
+		if exists(p) != want {
+			t.Errorf("%s exists = %v, want %v", p, !want, want)
+		}
+	}
+}
+
+func TestDoctor(t *testing.T) {
+	w := newWorld(t)
+	a := w.machine("alpha")
+	code, out := a.run("doctor")
+	if code != 1 || !strings.Contains(out, "not set up on this machine") {
+		t.Fatalf("doctor before init: exit %d\n%s", code, out)
+	}
+	a.init()
+	a.write(".vimrc", "set nu\n")
+	a.ok("add", a.path(".vimrc"))
+	_, out = a.run("doctor")
+	for _, want := range []string{
+		"✓ remote reachable without prompts",
+		"✓ 1 managed entry, 1 file",
+		"background agent: not installed",
+		"→ dotsync agent install",
+		"backups: 0 file(s)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("doctor output missing %q:\n%s", want, out)
+		}
+	}
+	// A broken remote is reported with git's error.
+	os.Rename(w.remote, w.remote+".gone")
+	_, out = a.run("doctor")
+	if !strings.Contains(out, "remote") || strings.Contains(out, "✓ remote reachable") {
+		t.Fatalf("unreachable remote not reported:\n%s", out)
 	}
 }

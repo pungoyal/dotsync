@@ -23,6 +23,18 @@ type Config struct {
 	// file already exists: "remote" (default) backs it up and installs the shared version,
 	// "conflict" leaves it untouched and reports a conflict.
 	OnExisting string `json:"on_existing,omitempty"`
+	// BackupRetentionDays: backups older than this are deleted, except the most recent copy of
+	// each file. nil means the default (90); 0 keeps everything.
+	BackupRetentionDays *int `json:"backup_retention_days,omitempty"`
+}
+
+const defaultBackupRetentionDays = 90
+
+func (c *Config) backupRetention() int {
+	if c.BackupRetentionDays == nil {
+		return defaultBackupRetentionDays
+	}
+	return *c.BackupRetentionDays
 }
 
 type EntryState struct {

@@ -52,4 +52,4 @@ dotsync sync
 Restoring is just an edit, so it syncs like any other change. If another machine changed the same file in the meantime, you get a [conflict](/dotsync/guides/resolve-conflicts/) rather than a silent overwrite.
 </Aside>
 
-Backups aren't pruned automatically. Delete old backup directories whenever you like.
+Backups older than 90 days are deleted after each sync, **except the most recent backup of each file**, which is kept however old it is. Change the period with [`backup_retention_days`](/dotsync/reference/configuration/) (`0` keeps everything). `dotsync doctor` shows how much space backups use.

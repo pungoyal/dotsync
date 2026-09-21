@@ -22,7 +22,8 @@ import { Steps, Aside } from '@astrojs/starlight/components';
 3. Check the result:
 
    ```sh
-   dotsync status
+   dotsync doctor     # setup, remote access, agent
+   dotsync status     # every managed file
    ```
 
 </Steps>
@@ -46,7 +47,7 @@ This choice only applies the **first time** an entry is synced on a machine. Aft
 ## A machine that shouldn't get everything
 
 - Entries marked for another OS (`"os": ["darwin"]`) are skipped automatically.
-- To skip an entry on this machine only, add it to `exclude` in `~/.config/dotsync/config.json`. See [Per-OS and per-machine differences](/dotsync/guides/differences/).
+- To skip an entry on this machine only, run `dotsync exclude <entry>` there. See [Per-OS and per-machine differences](/dotsync/guides/differences/).
 
 ## Replacing a machine
 

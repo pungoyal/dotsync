@@ -11,7 +11,8 @@ description: The per-machine config file, which is never synced.
   "branch": "main",
   "interval": 300,
   "exclude": ["karabiner/karabiner.json"],
-  "on_existing": "remote"
+  "on_existing": "remote",
+  "backup_retention_days": 90
 }
 ```
 
@@ -20,7 +21,8 @@ description: The per-machine config file, which is never synced.
 | `remote` | | URL of the shared repository |
 | `branch` | `main` | branch to sync |
 | `interval` | `300` | seconds between background syncs. Run `dotsync agent install` after changing it |
-| `exclude` | `[]` | manifest `source`s this machine doesn't manage. Their local files are left alone |
+| `exclude` | `[]` | manifest `source`s this machine doesn't manage. Their local files are left alone. Edit with `dotsync exclude` / `include` |
+| `backup_retention_days` | `90` | backups older than this are deleted after each sync, **except the most recent backup of each file**, which is always kept. `0` keeps everything |
 | `on_existing` | `"remote"` | what happens when an entry is synced here for the first time and a **different** local file already exists: `"remote"` backs it up and installs the shared version; `"conflict"` leaves it untouched and reports a conflict. `init --keep-existing` sets `"conflict"` |
 
 The file is located through `$XDG_CONFIG_HOME` if that's set.

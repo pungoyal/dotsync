@@ -44,7 +44,13 @@ In this tutorial you'll set up dotsync on two machines, share a few dotfiles bet
    automatic sync: launchd agent io.github.dotsync, every 300s
    ```
 
-   `init` created the manifest, ran a first sync and installed a background agent that syncs every five minutes.
+   `init` created the manifest, ran a first sync and installed a background agent that syncs every five minutes. Check that everything is healthy:
+
+   ```sh
+   dotsync doctor
+   ```
+
+   Every line should start with `✓`. If one doesn't, it tells you how to fix it. Usually it's git needing a password it can't ask for.
 
 2. Choose what to manage. Start with a couple of files and one directory:
 
