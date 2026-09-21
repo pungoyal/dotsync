@@ -46,7 +46,10 @@ Download an archive for macOS or Linux (amd64 or arm64) from the [releases page]
 ```sh title="Then, on every machine"
 dotsync init git@github.com:you/dotfiles.git
 dotsync add ~/.gitconfig ~/.config/fish ~/.config/nvim   # once, from any machine
+dotsync doctor                                           # check everything is healthy
 ```
+
+Upgrade any time with `dotsync update`. It checks the same checksum and provenance.
 </section>
 
 <section class="ds-section" aria-labelledby="why">

@@ -48,12 +48,25 @@ changelog:
   disable: true
 
 release:
-  mode: keep-existing
+  # release-please writes the notes; GoReleaser appends the verification instructions below.
+  mode: append
   footer: |
+
+    ---
+
+    ### Install or update
+
+    ```sh
+    curl -fsSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPOSITORY }}/main/install.sh | sh   # new install
+    dotsync update                                                                                    # existing install
+    ```
+
     ### Verify this release
 
     ```sh
     gh attestation verify dotsync_{{ .Version }}_<os>_<arch>.tar.gz --repo {{ .Env.GITHUB_REPOSITORY }}
+    # or offline, with the attached bundle:
+    gh attestation verify dotsync_{{ .Version }}_<os>_<arch>.tar.gz --bundle dotsync_{{ .Version }}.intoto.jsonl --repo {{ .Env.GITHUB_REPOSITORY }}
     ```
 
     See [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/).

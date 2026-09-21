@@ -1199,3 +1199,38 @@ func TestHousekeepingIsScheduled(t *testing.T) {
 		t.Fatalf("gc/prune not rescheduled: gc=%s prune=%s", st.LastGC, st.LastBackupPrune)
 	}
 }
+
+func TestAgentDefinitionDrift(t *testing.T) {
+	if osName() != "darwin" {
+		t.Skip("exercises the launchd definition; systemd/cron would touch the host's real units")
+	}
+	w := newWorld(t)
+	a := w.machine("alpha")
+	a.init()
+	a.activate()
+	c, _ := newCtx(true, true, io.Discard, io.Discard)
+	if installed, _ := agentInstalled(c); installed {
+		t.Fatal("no agent was installed yet")
+	}
+	def, err := desiredAgent(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, content := range def.files { // what `agent install` writes, without loading it
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		os.WriteFile(path, []byte(content), 0o644)
+	}
+	if installed, current := agentInstalled(c); !installed || !current {
+		t.Fatalf("fresh definition: installed=%v current=%v", installed, current)
+	}
+	// A definition written by an older version (here: missing the low-priority settings).
+	for path, content := range def.files {
+		os.WriteFile(path, []byte(strings.Replace(content, "<key>LowPriorityBackgroundIO</key><true/>", "", 1)), 0o644)
+	}
+	if installed, current := agentInstalled(c); !installed || current {
+		t.Fatalf("old definition: installed=%v current=%v", installed, current)
+	}
+	if _, out := a.run("doctor"); !strings.Contains(out, "definition is from an older dotsync") {
+		t.Errorf("doctor didn't flag the outdated agent:\n%s", out)
+	}
+}

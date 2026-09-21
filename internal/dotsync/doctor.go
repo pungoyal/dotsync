@@ -159,6 +159,9 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 		}
 	}
+	if installed, current := agentInstalled(c); installed && !current {
+		d.add(checkWarn, "the background agent's definition is from an older dotsync", "", "dotsync agent install")
+	}
 	if _, err := exec.LookPath("dotsync"); err != nil {
 		d.add(checkWarn, "dotsync is not on your PATH", "", "add "+tilde(filepath.Dir(c.Paths.Bin))+" to PATH")
 	}
