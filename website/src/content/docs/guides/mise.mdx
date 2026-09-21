@@ -136,6 +136,16 @@ Copy it to each new machine yourself, once. dotsync never syncs it, and it doesn
 
 </Steps>
 
+## mise's own dotfiles
+
+mise can also manage dotfiles itself, with `mise dot` and a `[dotfiles]` section in its config. It links, copies or templates files from a source directory, and it can *track* files where they are, keeping their history in git. With the history watcher and `history.sync = "sync"`, it syncs tracked files between machines too. See [mise's dotfiles docs](https://mise.jdx.dev/dotfiles.html), and the [comparison](/dotsync/concepts/comparison/) for how it differs from dotsync.
+
+You can use both, but **never let both manage the same file.** Each would see the other's writes as local edits and push them back, and the two histories would keep fighting over the file. In practice:
+
+- **Pick one tool per file.** If mise tracks `~/.zshrc`, don't `dotsync add` it, and the reverse.
+- **Watch out for `~/.config/mise/` itself.** Syncing it with dotsync also syncs its `[dotfiles]` entries, including the tracking entries mise writes to `conf.d/dotfiles-tracking.toml`. Every machine then starts managing those files with mise as well. Either keep dotfile entries out of the synced config (for example with `--ignore conf.d/dotfiles-tracking.toml`), or let mise manage its own config and don't add it to dotsync.
+- **Moving a file from mise to dotsync:** for a tracked file, `mise dot untrack <file>`; the file stays where it is. For a linked file, first replace the symlink with a real copy of its source, then delete its `[dotfiles]` entry. Then `dotsync add <file>`.
+
 ## Project tasks and trust
 
 Project `mise.toml` files can define tasks and `exec()` templates, so mise asks you to `mise trust` them. Your global `config.toml` is your own file and doesn't need that. Once it's synced, **anyone who can push to your dotfiles repository can change what it runs** the next time mise loads it. The same is true of your shell startup files, so treat the repository with the same care: keep it private and protect the credentials that can push to it.
