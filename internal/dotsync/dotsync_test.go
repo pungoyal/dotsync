@@ -956,3 +956,18 @@ func TestDoctor(t *testing.T) {
 		t.Fatalf("unreachable remote not reported:\n%s", out)
 	}
 }
+
+func TestEmbeddedIcon(t *testing.T) {
+	w := newWorld(t)
+	w.machine("alpha").activate()
+	if len(iconPNG) < 100 || !bytes.HasPrefix(iconPNG, []byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatal("embedded icon is not a PNG")
+	}
+	p := installIcon()
+	if got, err := os.ReadFile(p); err != nil || !bytes.Equal(got, iconPNG) {
+		t.Fatalf("installIcon: %v", err)
+	}
+	if !isWithin(p, NewPaths().DataDir) {
+		t.Fatalf("icon installed outside dotsync's data dir: %s", p)
+	}
+}

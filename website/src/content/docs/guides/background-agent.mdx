@@ -80,7 +80,10 @@ Check it with `dotsync doctor`, which reaches the remote exactly as the agent do
 | `~/.local/state/dotsync/sync.log` | every change, conflict and error, plus one summary line per sync (rotated at 1 MiB) |
 | `~/.local/state/dotsync/agent.log` | anything the scheduled job printed |
 
-The agent notifies you (Notification Center on macOS, `notify-send` on Linux) when a **new** conflict appears or git starts failing to authenticate. Set `DOTSYNC_NO_NOTIFY=1` to turn this off.
+The agent notifies you when a **new** conflict appears or git starts failing to authenticate. Set `DOTSYNC_NO_NOTIFY=1` to turn this off.
+
+- **Linux:** notifications go through `notify-send` and show the dotsync icon.
+- **macOS:** notifications appear in Notification Center. To show the dotsync icon instead of the Script Editor icon, install [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`), and dotsync uses it automatically.
 
 <Aside type="tip" title="Headless Linux servers">
 Without lingering, systemd user timers only run while you're logged in. Enable it once with `loginctl enable-linger $USER`.
