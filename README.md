@@ -55,6 +55,7 @@ Most dotfile managers are **deployment tools**: you edit a repo, then run a comm
 - **Secrets stay home.** SSH keys, cloud credentials, tokens in shell rc files and similar things are refused before they reach the remote.
 - **Offline-tolerant.** Machines that were away for a month catch up correctly when they reconnect.
 - **Few moving parts.** One static binary plus `git`, and a private git repo you already know how to host. No daemon, database, server or account.
+- **Light on your battery.** A sync with nothing to do takes about 65 ms and writes nothing to disk. There's no randomized scheduling and no surprise background work.
 - **Portable.** Targets are written as `~/…` or `$XDG_CONFIG_HOME/…`. Per-OS entries and per-machine exclusions keep machine-specific settings out of the shared config.
 
 ## Install
@@ -63,7 +64,7 @@ Most dotfile managers are **deployment tools**: you edit a repo, then run a comm
 curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh
 ```
 
-The script downloads the right binary for your OS and CPU and **checks its SHA-256 checksum** before installing it to `~/.local/bin`. If the [GitHub CLI](https://cli.github.com) is installed, it also **verifies the build provenance attestation**. See [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/).
+The script downloads the right binary for your OS and CPU and **checks its SHA-256 checksum** before installing it to `~/.local/bin`. Later, **`dotsync update`** upgrades in place with the same checks. If the [GitHub CLI](https://cli.github.com) is installed, it also **verifies the build provenance attestation**. See [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/).
 
 <details>
 <summary>Other ways to install</summary>
@@ -97,7 +98,7 @@ git clone https://github.com/pungoyal/dotsync && cd dotsync && make build   # �
 
 3. **On every other machine**, run the same `init`. Managed files show up. If a local file already existed and differed, it is backed up first and then replaced with the shared version.
 
-4. **That's it.** Edit files as you normally would; they sync every 5 minutes. Run `dotsync status` any time to see what's going on.
+4. **That's it.** Edit files as you normally would; they sync every 5 minutes. Run `dotsync doctor` to check the setup, and `dotsync status` any time to see what's going on.
 
 Follow the [quick start](https://pungoyal.github.io/dotsync/start/quick-start/) for a guided tour.
 

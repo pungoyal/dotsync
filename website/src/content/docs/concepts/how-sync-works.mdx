@@ -42,9 +42,9 @@ Pick what happened to a file on each side and see what dotsync does:
 
 1. **Lock.** An exclusive file lock makes sure the background agent and a manual `dotsync sync` never run at once.
 2. **Fetch** the shared repository. If it can't be reached, dotsync continues with the last copy it fetched, and local changes wait.
-3. **Reset the cache clone** to exactly the remote commit. The clone never holds anything that isn't on the remote, so it can't drift or get stuck.
+3. **Reset the cache clone** to exactly the remote commit whenever a previous run modified it, the remote moved, or it hasn't been reset today. A marker created *before* any modification guarantees an interrupted sync is always followed by a reset. The clone never holds anything that isn't on the remote, so it can't drift or get stuck.
 4. **Replay queued changes.** `add`, `remove` and `describe` are recorded on this machine and re-applied to the *current* remote manifest on each sync. That's how two machines can add different files at the same moment without either change getting lost.
-5. **Plan.** Compute local, remote and base for every file (a hash of content, type and executable bit), and decide as in the table above.
+5. **Plan.** Compute local, remote and base for every file (a hash of content, type and executable bit), and decide as in the table above. Files whose size, timestamps, inode and mode haven't changed since they were last hashed aren't read again.
 6. **Apply** remote changes here. Right before replacing a file, dotsync reads it once more; if it changed in the meantime, the file is skipped and retried on the next sync.
 7. **Commit and push** this machine's changes, together with any manifest changes, in a single commit.
 8. **If the push is rejected** because another machine pushed first, go back to step 2 and redo everything on top of its commit. There are no merges and no rebases.
