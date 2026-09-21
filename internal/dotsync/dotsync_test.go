@@ -1088,6 +1088,29 @@ func TestHousekeepingIsScheduled(t *testing.T) {
 	}
 }
 
+func TestRepoSettingsAppliedAndRepaired(t *testing.T) {
+	w := newWorld(t)
+	a := w.machine("alpha")
+	a.init()
+	a.activate()
+	c, _ := newCtx(true, true, io.Discard, io.Discard)
+	check := func(when string) {
+		t.Helper()
+		for _, kv := range repoSettings() {
+			if got := strings.TrimSpace(gitCmd(t, c.Paths.Repo, "config", "--local", kv[0])); got != kv[1] {
+				t.Fatalf("%s: %s = %q, want %q", when, kv[0], got, kv[1])
+			}
+		}
+	}
+	check("after init")
+	gitCmd(t, c.Paths.Repo, "config", "commit.gpgsign", "true")
+	gitCmd(t, c.Paths.Repo, "config", "--unset", "core.hooksPath")
+	if err := configureRepo(c.Git); err != nil {
+		t.Fatal(err)
+	}
+	check("after repair")
+}
+
 func TestAgentDefinitionDrift(t *testing.T) {
 	if osName() != "darwin" {
 		t.Skip("exercises the launchd definition; systemd/cron would touch the host's real units")

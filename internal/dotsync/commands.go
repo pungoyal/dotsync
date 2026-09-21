@@ -963,7 +963,7 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 			return 1, err
 		}
 		c.say("cloning %s ...", cfg.Remote)
-		r, err := g.run(false, 10*time.Minute, "clone", "-q", "--no-checkout", cfg.Remote, c.Paths.Repo)
+		r, err := g.run(false, 10*time.Minute, append(append([]string{"clone", "-q", "--no-checkout"}, cloneConfigArgs()...), cfg.Remote, c.Paths.Repo)...)
 		if err != nil {
 			return 1, err
 		}
