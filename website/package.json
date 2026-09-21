@@ -6,7 +6,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "brand": "python3 ../assets/brand/generate_icon.py ../assets/brand && node scripts/brand.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.2",

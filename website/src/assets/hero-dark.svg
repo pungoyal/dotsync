@@ -20,10 +20,7 @@
   <!-- repository -->
   <g>
     <rect x="198" y="176" width="124" height="92" rx="14" fill="#1c2533" stroke="#14b8a6" stroke-width="2"/>
-    <path d="M216 198h20l6 6h46v4H216z" fill="#14b8a6" opacity=".9"/>
-    <rect x="216" y="216" width="88" height="8" rx="4" fill="#99f6e4" opacity=".85"/>
-    <rect x="216" y="231" width="64" height="8" rx="4" fill="#8a97a6" opacity=".6"/>
-    <rect x="216" y="246" width="76" height="8" rx="4" fill="#8a97a6" opacity=".6"/>
+    <svg x="226" y="188" width="68" height="68" viewBox="0 0 64 64"><g fill="none"><g stroke="#2dd4bf" stroke-width="5.0" stroke-linecap="round" stroke-linejoin="round"><path d="M44.05 22.25A15.5 15.5 0 0 0 16.50 32.27"/><path d="M19.95 41.75A15.5 15.5 0 0 0 47.50 31.73"/><path d="M13.10 26.04L16.50 32.27L21.72 27.45"/><path d="M50.90 37.96L47.50 31.73L42.28 36.55"/></g><circle cx="32" cy="32" r="5.75" fill="#e8edf2"/></g></svg>
     <text x="260" y="166" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="13" font-weight="600" fill="#e8edf2">private git repo</text>
   </g>
   <!-- laptop (macOS) -->

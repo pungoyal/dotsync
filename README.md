@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/icon.svg" width="96" height="96" alt="dotsync icon">
+</p>
+
 <h1 align="center">dotsync</h1>
 
 <p align="center">

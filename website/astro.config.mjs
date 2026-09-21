@@ -39,6 +39,9 @@ export default defineConfig({
 				{ tag: 'meta', attrs: { property: 'og:image:alt', content: 'dotsync: your dotfiles, the same everywhere' } },
 				{ tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
 				{ tag: 'meta', attrs: { name: 'theme-color', content: '#0f766e' } },
+				{ tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/dotsync/favicon-32.png' } },
+				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/dotsync/apple-touch-icon.png' } },
+				{ tag: 'link', attrs: { rel: 'manifest', href: '/dotsync/site.webmanifest' } },
 			],
 			expressiveCode: {
 				themes: ['github-dark-default', 'github-light-default'],

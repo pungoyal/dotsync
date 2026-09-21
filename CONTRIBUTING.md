@@ -84,6 +84,23 @@ npm run build    # also checks every internal link
 
 Tools (Go, Node, linters, GoReleaser) are pinned in `mise.toml`: run `mise install`.
 
+## Brand assets
+
+The icon and mark are generated. Edit `assets/brand/generate_icon.py` (geometry and colours), then run:
+
+```sh
+cd website && npm run brand
+```
+
+That regenerates everything derived from them:
+
+- `assets/brand/*.svg` and `assets/brand/png/`
+- the social preview image
+- the site's favicons, web manifest, logos and `og.png`
+- the icon embedded in the binary (`internal/dotsync/assets/icon.png`)
+
+Commit the results.
+
 ## Commits and pull requests
 
 - We use [Conventional Commits](https://www.conventionalcommits.org/): `feat: …`, `fix: …`, `docs: …`, `refactor: …`, `test: …`, `ci: …`, `chore: …`. Use `feat!:` or a `BREAKING CHANGE:` footer for breaking changes. Release notes and version numbers are generated from these messages, and PR titles are checked.

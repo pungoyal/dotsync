@@ -359,17 +359,24 @@ func notify(title, message string) {
 	if os.Getenv("DOTSYNC_NO_NOTIFY") != "" {
 		return
 	}
+	icon := installIcon()
 	var cmd *exec.Cmd
-	switch osName() {
-	case "darwin":
+	switch {
+	case osName() == "darwin" && hasCommand("terminal-notifier"):
+		// The only way to show the dotsync icon on a macOS notification from a CLI tool.
+		cmd = exec.Command("terminal-notifier", "-title", title, "-message", message, "-group", "dotsync", "-appIcon", icon)
+	case osName() == "darwin":
 		t, _ := json.Marshal(title)
 		m, _ := json.Marshal(message)
 		cmd = exec.Command("osascript", "-e", fmt.Sprintf("display notification %s with title %s", m, t))
-	default:
-		if _, err := exec.LookPath("notify-send"); err != nil {
-			return
+	case hasCommand("notify-send"):
+		args := []string{"--app-name=dotsync"}
+		if icon != "" {
+			args = append(args, "--icon="+icon)
 		}
-		cmd = exec.Command("notify-send", title, message)
+		cmd = exec.Command("notify-send", append(args, title, message)...)
+	default:
+		return
 	}
 	done := make(chan struct{})
 	go func() { _ = cmd.Run(); close(done) }()
@@ -380,4 +387,9 @@ func notify(title, message string) {
 			_ = cmd.Process.Kill()
 		}
 	}
+}
+
+func hasCommand(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
