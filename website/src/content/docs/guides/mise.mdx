@@ -3,7 +3,7 @@ title: Use with mise
 description: Sync your global mise tools, tasks and environment with dotsync, while installed tools and secrets stay on each machine.
 ---
 
-import { Aside, Steps } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
 
 [mise](https://mise.jdx.dev) manages tool versions, environment variables and tasks. Its global configuration is plain files under `~/.config/mise/`, so dotsync can sync it like any other dotfile. What syncs is the **recipe**. Each machine still installs its own tools and keeps its own secrets.
 
@@ -15,16 +15,17 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 | `~/.config/mise/conf.d/` | yes | extra config fragments, if you use them |
 | `~/.config/mise/tasks/` | yes | global file tasks. The executable bit is kept |
 | `~/.config/mise/age.txt` | **never** | the key that decrypts your secrets. dotsync refuses it |
+| `~/.config/mise/*.env` | no | plaintext secrets for this machine only (see [below](#keep-them-in-a-local-file)) |
 | `~/.local/share/mise/` | no | installed tools: large, platform-specific, and rebuilt by `mise install` |
 | `mise.toml` inside a project | no | it belongs in that project's own repository |
 
-Add the pieces you use one by one, rather than the whole `~/.config/mise` directory. That way an encrypted secrets file can get its own entry later (see [below](#encrypted-files-with-sops)).
+The simplest setup is to manage the whole directory and ignore the files that must stay local:
 
 ```sh
-dotsync add ~/.config/mise/config.toml -d "mise global tools and settings"
-dotsync add ~/.config/mise/conf.d -d "mise config fragments"
-dotsync add ~/.config/mise/tasks -d "mise global tasks"
+dotsync add ~/.config/mise -d "mise" --ignore age.txt --ignore '*.env'
 ```
+
+dotsync would refuse to upload those two anyway. Ignoring them keeps them out of `dotsync status` and `doctor`, which would otherwise list them as held back on every run.
 
 ## Installing tools on the other machines
 
@@ -79,7 +80,7 @@ The secret rules don't flag this. A value that starts with a brace is read at ru
 _.file = "~/.config/mise/local.env"
 ```
 
-Create `~/.config/mise/local.env` on each machine and **don't** add it. Even if it ended up inside a managed directory, dotsync wouldn't upload it: `*.env` is on the list of secret paths.
+Create `~/.config/mise/local.env` on each machine. The `--ignore '*.env'` above keeps it out of sync. Even without that, dotsync wouldn't upload it: `*.env` is on the list of secret paths.
 
 ### Encrypt them with age
 
@@ -98,26 +99,20 @@ Only ciphertext reaches the repository, so the file syncs without any exceptions
 
 ### Encrypted files with sops
 
-mise can also load a sops-encrypted file such as `.env.json` or `.env.yaml`. Those names match the secret path rules, so tell dotsync that this one file is meant to be in the repository:
+mise can also load a sops-encrypted file such as `.env.json` or `.env.yaml`:
 
 ```toml title="~/.config/mise/config.toml"
 [env]
 _.file = { path = "~/.config/mise/.env.json", redact = true }
 ```
 
-```sh
-dotsync add ~/.config/mise/.env.json --allow-secrets -d "sops-encrypted mise env"
-```
-
-<Aside type="caution">
-`--allow-secrets` applies to the whole entry. Use it on the encrypted file only, never on a directory, where it would also let a plaintext file through.
-</Aside>
+dotsync recognizes sops files and syncs them even though the name looks like a secret. It still checks their readable lines (keys, comments, `_unencrypted` values), so no `--allow-secrets` is needed. Don't use `--allow-secrets` on the directory: it would let a plaintext file through too.
 
 ### The age key
 
 Both approaches depend on an age private key, by default `~/.config/mise/age.txt`. mise can also use your SSH key. Anyone with that key and a copy of the repository can read every secret, so it has to stay off the repository. dotsync refuses it by path (`.config/mise/age.txt`, `.config/sops/age/*`) and by content (`AGE-SECRET-KEY-1…`).
 
-Copy it to each new machine yourself, once:
+Copy it to each new machine yourself, once. Until you do, `dotsync doctor` on that machine warns that managed files are encrypted but there's no age key:
 
 <Steps>
 

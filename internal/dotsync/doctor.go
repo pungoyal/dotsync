@@ -207,6 +207,11 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 		if n := len(st.PendingOps); n > 0 {
 			d.add(checkInfo, fmt.Sprintf("%d queued change(s) not yet pushed", n), "", "")
 		}
+		if enc := needsAgeKey(p); len(enc) > 0 && ageKeyFile() == "" {
+			d.add(checkWarn, fmt.Sprintf("%s encrypted with age, but this machine has no age key", plural(len(enc), "managed file is", "managed files are")),
+				"e.g. "+enc[0]+". Keys are never synced, so each machine needs its own copy",
+				"copy your key to ~/.config/mise/age.txt or ~/.config/sops/age/keys.txt (chmod 600); ignore this if you decrypt with an SSH key")
+		}
 		return nil
 	})
 	switch {
@@ -228,6 +233,58 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 		return 1, nil
 	}
 	return 0, nil
+}
+
+// miseAgeValue matches a mise env value stored encrypted in the config: KEY = { age = { value = "…" } }.
+var miseAgeValue = regexp.MustCompile(`=\s*\{\s*age\s*=\s*\{`)
+
+// needsAgeKey lists managed files (as displayed) whose content can only be read with an age key:
+// age files, sops files with age recipients, and mise configs with age-encrypted values.
+func needsAgeKey(p *Plan) []string {
+	var out []string
+	for _, it := range p.Items {
+		data, err := os.ReadFile(it.Path())
+		if err != nil {
+			if data, err = os.ReadFile(it.Repo); err != nil {
+				continue
+			}
+		}
+		switch encryption(data) {
+		case "age":
+		case "sops":
+			if !sopsAgeRecipient.Match(data) {
+				continue // KMS, PGP or Vault: not ours to check
+			}
+		default:
+			if !miseAgeValue.Match(data) {
+				continue
+			}
+		}
+		out = append(out, it.Display())
+	}
+	return out
+}
+
+var sopsAgeRecipient = regexp.MustCompile(`recipient"?\s*[:=]\s*"?age1`)
+
+// ageKeyFile returns where this machine keeps an age key for mise or sops, or "".
+func ageKeyFile() string {
+	for _, v := range []string{"MISE_AGE_KEY", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD"} {
+		if os.Getenv(v) != "" {
+			return "$" + v
+		}
+	}
+	cfg := mustEnvDir("XDG_CONFIG_HOME")
+	for _, f := range []string{
+		filepath.Join(cfg, "mise", "age.txt"),
+		filepath.Join(cfg, "sops", "age", "keys.txt"),
+		filepath.Join(homeDir(), "Library", "Application Support", "sops", "age", "keys.txt"),
+	} {
+		if _, err := os.Stat(f); err == nil {
+			return f
+		}
+	}
+	return ""
 }
 
 func plural(n int, one, many string) string {

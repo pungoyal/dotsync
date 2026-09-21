@@ -408,7 +408,10 @@ func cmdAdd(args []string, stdout, stderr io.Writer) (int, error) {
 				files, _ := walkTree(real, append(append([]string(nil), defaultIgnore...), ignore...), c.Paths.OwnDirs())
 				var held []string
 				for _, f := range files {
-					if secretPathReason(filepath.Join(path, f)) != "" {
+					if secretPathReason(filepath.Join(path, f)) == "" {
+						continue
+					}
+					if o, err := readObj(filepath.Join(real, f)); err != nil || secretReason(filepath.Join(path, f), o) != "" {
 						held = append(held, f)
 					}
 				}
