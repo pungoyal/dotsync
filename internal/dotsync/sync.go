@@ -2,6 +2,7 @@ package dotsync
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,71 +24,84 @@ func executeLocal(c *Ctx, st *State, p *Plan, backups *Backups) []*Item {
 	var staged []*Item
 	for _, it := range p.Items {
 		es := st.entry(it.Entry)
-		err := func() error {
-			switch it.Action {
-			case actOK:
+		var err error
+		switch it.Action {
+		case actOK:
+			setBase(es, it.Rel, it.R)
+		case actDownload:
+			if err = installRemote(it, backups); err == nil {
 				setBase(es, it.Rel, it.R)
-			case actDownload:
-				cur, err := recheck(it)
-				if err != nil {
-					return err
-				}
-				robj, err := readObj(it.Repo)
-				if err != nil {
-					return err
-				}
-				if cur != nil {
-					b, err := backups.save(it.Local)
-					if err != nil {
-						return err
-					}
-					it.Note = "previous version saved to " + tilde(b)
-				}
-				if err := writeLocal(it.Local, robj, it.Entry.Mode, it.Entry.Write); err != nil {
-					return err
-				}
-				setBase(es, it.Rel, it.R)
-			case actDeleteLocal:
-				if _, err := recheck(it); err != nil {
-					return err
-				}
-				b, err := backups.save(it.Local)
-				if err != nil {
-					return err
-				}
-				it.Note = "saved to " + tilde(b)
-				if err := os.Remove(it.Local); err != nil {
-					return err
-				}
-				if root, err := localRoot(it.Entry); err == nil {
-					pruneEmptyDirs(filepath.Dir(it.Local), root)
-				}
+			}
+		case actDeleteLocal:
+			if err = deleteLocal(it, backups); err == nil {
 				setBase(es, it.Rel, "")
-			case actUpload:
-				lobj, err := recheck(it)
-				if err != nil {
-					return err
-				}
-				c.markRepoDirty()
-				if err := writeRepo(it.Repo, lobj); err != nil {
-					return err
-				}
-				staged = append(staged, it)
-			case actDeleteRepo:
-				c.markRepoDirty()
-				if err := removePath(it.Repo); err != nil {
-					return err
-				}
-				pruneEmptyDirs(filepath.Dir(it.Repo), filepath.Join(c.Paths.Repo, filesDir))
+			}
+		case actUpload, actDeleteRepo:
+			if err = stage(c, it); err == nil {
 				staged = append(staged, it)
 			}
-			return nil
-		}()
+		}
 		if err != nil {
 			it.Action, it.Note = actError, err.Error()
 		}
 	}
 	return staged
+}
+
+// installRemote replaces the local file with the repository's version, backing it up first.
+func installRemote(it *Item, backups *Backups) error {
+	cur, err := recheck(it)
+	if err != nil {
+		return err
+	}
+	robj, err := readObj(it.Repo)
+	if err != nil {
+		return err
+	}
+	if cur != nil {
+		b, err := backups.save(it.Local)
+		if err != nil {
+			return err
+		}
+		it.Note = "previous version saved to " + tilde(b)
+	}
+	return writeLocal(it.Local, robj, it.Entry.Mode, it.Entry.Write)
+}
+
+// deleteLocal removes a file deleted on another machine, backing it up first.
+func deleteLocal(it *Item, backups *Backups) error {
+	if _, err := recheck(it); err != nil {
+		return err
+	}
+	b, err := backups.save(it.Local)
+	if err != nil {
+		return err
+	}
+	it.Note = "saved to " + tilde(b)
+	if err := os.Remove(it.Local); err != nil {
+		return err
+	}
+	if root, err := localRoot(it.Entry); err == nil {
+		pruneEmptyDirs(filepath.Dir(it.Local), root)
+	}
+	return nil
+}
+
+// stage writes this machine's change (an edit or a deletion) into the cache clone.
+func stage(c *Ctx, it *Item) error {
+	c.markRepoDirty()
+	if it.Action == actDeleteRepo {
+		if err := removePath(it.Repo); err != nil {
+			return err
+		}
+		pruneEmptyDirs(filepath.Dir(it.Repo), filepath.Join(c.Paths.Repo, filesDir))
+		return nil
+	}
+	lobj, err := recheck(it)
+	if err != nil {
+		return err
+	}
+	return writeRepo(it.Repo, lobj)
 }
 
 // recheck re-reads an item's local file right before acting on it, refusing if it changed since
@@ -236,65 +250,78 @@ func runSync(c *Ctx) (res *SyncResult, err error) {
 		}
 		staged := executeLocal(c, st, p, backups)
 		dropFailedOps(st, p.OpErrors)
-		if p.ManifestChanged {
-			c.markRepoDirty()
-			if err := saveManifest(c.Paths.Repo, p.Manifest); err != nil {
-				return nil, err
-			}
+		outcome, commit, err := publish(c, st, p, staged)
+		if errors.Is(err, errRemoteMoved) {
+			continue // another machine pushed first: redo the pass on top of its commit
 		}
-		// Only ask git about the working tree if this pass changed it.
-		dirty := false
-		if len(staged) > 0 || p.ManifestChanged || len(p.AppliedOps) > 0 {
-			if _, err := c.Git.Must("add", "-A", "--", "."); err != nil {
-				return nil, err
-			}
-			dirty = c.Git.Try("diff", "--cached", "--quiet").Code != 0
-		}
-		outcome, commit := "ok", ""
-		markWaiting := func() {
-			outcome = "offline"
-			for _, it := range staged {
-				it.Action, it.Note = actWaiting, "will be sent when the remote is reachable"
-			}
-		}
-		switch {
-		case !dirty:
-			clearOps(st, p.AppliedOps)
-		case !p.Online:
-			markWaiting()
-		default:
-			if _, err := c.Git.Must("commit", "-q", "--no-verify", "-m", commitMessage(p, staged)); err != nil {
-				return nil, err
-			}
-			ok, perr := c.push()
-			if !ok {
-				online, ferr := c.fetch()
-				if online {
-					if head, _ := c.originCommit(); head != p.BaseCommit {
-						continue // another machine pushed first: redo the pass on top of its commit
-					}
-					return nil, fmt.Errorf("git push failed: %s", perr)
-				}
-				p.FetchError, p.GitProblem = lastLine(ferr), diagnoseGit(c, ferr)
-				markWaiting()
-				break
-			}
-			commit, _ = c.Git.Must("rev-parse", "--short", "HEAD")
-			c.markRepoClean() // everything in the working tree is now committed and pushed
-			for _, it := range staged {
-				sig := it.L
-				if it.Action == actDeleteRepo {
-					sig = ""
-				}
-				setBase(st.entry(it.Entry), it.Rel, sig)
-			}
-			clearOps(st, p.AppliedOps)
+		if err != nil {
+			return nil, err
 		}
 		res := finish(c, st, p, outcome, commit)
 		housekeeping(c, st, time.Now())
 		return res, nil
 	}
 	return nil, fmt.Errorf("gave up after %d attempts: the remote kept changing", pushAttempts)
+}
+
+var errRemoteMoved = errors.New("the remote changed during the sync")
+
+// publish commits and pushes this pass's changes to the cache clone, if any. Changes wait (the
+// outcome is "offline") when the remote is unreachable, and errRemoteMoved means another machine
+// pushed first.
+func publish(c *Ctx, st *State, p *Plan, staged []*Item) (outcome, commit string, err error) {
+	if p.ManifestChanged {
+		c.markRepoDirty()
+		if err := saveManifest(c.Paths.Repo, p.Manifest); err != nil {
+			return "", "", err
+		}
+	}
+	// Only ask git about the working tree if this pass changed it.
+	dirty := false
+	if len(staged) > 0 || p.ManifestChanged || len(p.AppliedOps) > 0 {
+		if _, err := c.Git.Must("add", "-A", "--", "."); err != nil {
+			return "", "", err
+		}
+		dirty = c.Git.Try("diff", "--cached", "--quiet").Code != 0
+	}
+	if !dirty {
+		clearOps(st, p.AppliedOps)
+		return "ok", "", nil
+	}
+	waiting := func() (string, string, error) {
+		for _, it := range staged {
+			it.Action, it.Note = actWaiting, "will be sent when the remote is reachable"
+		}
+		return "offline", "", nil
+	}
+	if !p.Online {
+		return waiting()
+	}
+	if _, err := c.Git.Must("commit", "-q", "--no-verify", "-m", commitMessage(p, staged)); err != nil {
+		return "", "", err
+	}
+	if ok, perr := c.push(); !ok {
+		online, ferr := c.fetch()
+		if !online {
+			p.FetchError, p.GitProblem = lastLine(ferr), diagnoseGit(c, ferr)
+			return waiting()
+		}
+		if head, _ := c.originCommit(); head != p.BaseCommit {
+			return "", "", errRemoteMoved
+		}
+		return "", "", fmt.Errorf("git push failed: %s", perr)
+	}
+	commit, _ = c.Git.Must("rev-parse", "--short", "HEAD")
+	c.markRepoClean() // everything in the working tree is now committed and pushed
+	for _, it := range staged {
+		sig := it.L
+		if it.Action == actDeleteRepo {
+			sig = ""
+		}
+		setBase(st.entry(it.Entry), it.Rel, sig)
+	}
+	clearOps(st, p.AppliedOps)
+	return "ok", commit, nil
 }
 
 func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
@@ -333,27 +360,41 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 		Items: items,
 	}
 	st.LastSync = &res.SyncSummary
-	for _, it := range items {
+	logResult(c, res, prev)
+	if c.Quiet {
+		notifyResult(p, prev, fresh)
+	}
+	return res
+}
+
+// logResult appends the result to the agent log. A sync that changed nothing isn't logged, so an
+// idle machine never writes to the log.
+func logResult(c *Ctx, r *SyncResult, prev *SyncSummary) {
+	for _, it := range r.Items {
 		c.log(strings.TrimSpace(fmt.Sprintf("%-12s %s %s", it.Action, it.Path, it.Note)))
 	}
-	for _, e := range errs {
+	for _, e := range r.Errors {
 		c.log("error        " + e)
 	}
-	// A sync that changed nothing isn't logged, so an idle machine never writes to the log.
-	if len(items) > 0 || len(errs) > 0 || commit != "" || prev == nil || prev.Outcome != outcome || prev.FetchError != p.FetchError {
-		line := "sync " + outcome
-		if commit != "" {
-			line += " pushed " + commit
-		}
-		if outcome == "offline" {
-			line += " (" + p.FetchError + ")"
-		}
-		c.log(line)
+	if len(r.Items) == 0 && len(r.Errors) == 0 && r.Commit == "" && prev != nil && prev.Outcome == r.Outcome && prev.FetchError == r.FetchError {
+		return
 	}
-	if c.Quiet && p.GitProblem != nil && (prev == nil || prev.Problem != p.GitProblem.Problem) {
+	line := "sync " + r.Outcome
+	if r.Commit != "" {
+		line += " pushed " + r.Commit
+	}
+	if r.Outcome == "offline" {
+		line += " (" + r.FetchError + ")"
+	}
+	c.log(line)
+}
+
+// notifyResult tells the user, once, about what needs them: a git problem, or new conflicts.
+func notifyResult(p *Plan, prev *SyncSummary, fresh []ConflictInfo) {
+	if p.GitProblem != nil && (prev == nil || prev.Problem != p.GitProblem.Problem) {
 		notify("dotsync can't reach your dotfiles repository", p.GitProblem.Problem+". Run `dotsync doctor` for the fix.")
 	}
-	if len(fresh) > 0 && c.Quiet {
+	if len(fresh) > 0 {
 		var names []string
 		for i, f := range fresh {
 			if i == 3 {
@@ -364,7 +405,6 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 		}
 		notify("dotsync: conflict", "Changed here and on another machine: "+strings.Join(names, ", ")+". Run `dotsync status`.")
 	}
-	return res
 }
 
 // repoConfigVersion is bumped whenever configureRepo changes, so existing installs pick up new

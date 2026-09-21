@@ -3,6 +3,7 @@ package dotsync
 import (
 	"archive/tar"
 	"bufio"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -21,14 +22,24 @@ import (
 	"time"
 )
 
-const releaseRepo = "pungoyal/dotsync"
+// releaseHost is where releases are published and how their provenance is checked.
+type releaseHost struct {
+	repo         string // owner/name
+	api          string // REST API base URL
+	download     string // base URL of release downloads
+	verifyWithGH bool   // check build provenance with the GitHub CLI, when it's installed
+}
+
+func (h releaseHost) latestURL() string { return h.api + "/repos/" + h.repo + "/releases/latest" }
+
+func (h releaseHost) assetURL(tag, name string) string {
+	return h.download + "/" + h.repo + "/releases/download/" + tag + "/" + name
+}
 
 // Overridable in tests.
 var (
-	updateAPIBase      = "https://api.github.com"
-	updateDownloadBase = "https://github.com"
-	updateTarget       = os.Executable
-	updateVerifyWithGH = true
+	releases     = releaseHost{repo: "pungoyal/dotsync", api: "https://api.github.com", download: "https://github.com", verifyWithGH: true}
+	updateTarget = os.Executable
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Minute}
@@ -79,7 +90,7 @@ func httpGet(ctx context.Context, url string) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "dotsync/"+Version)
-	if strings.HasPrefix(url, updateAPIBase) {
+	if strings.HasPrefix(url, releases.api) {
 		req.Header.Set("Accept", "application/vnd.github+json")
 		if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
 			req.Header.Set("Authorization", "Bearer "+tok)
@@ -98,7 +109,7 @@ func httpGet(ctx context.Context, url string) (*http.Response, error) {
 
 // latestRelease returns the newest release tag, e.g. "v0.3.0".
 func latestRelease(ctx context.Context) (string, error) {
-	resp, err := httpGet(ctx, updateAPIBase+"/repos/"+releaseRepo+"/releases/latest")
+	resp, err := httpGet(ctx, releases.latestURL())
 	if err != nil {
 		return "", err
 	}
@@ -236,102 +247,41 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 	defer cancel()
 
 	current := currentVersion()
-	tag := *want
-	if tag == "" {
-		latest, err := latestRelease(ctx)
-		if err != nil {
-			return 1, fmt.Errorf("can't check for updates: %w", err)
-		}
-		tag = latest
-	} else if !strings.HasPrefix(tag, "v") {
-		tag = "v" + tag
+	tag, err := releaseTag(ctx, *want)
+	if err != nil && *want == "" {
+		return 1, err // couldn't reach the release host
+	} else if err != nil {
+		return 2, err
 	}
-	target, ok := parseSemver(tag)
-	if !ok {
-		return 2, fmt.Errorf("%q is not a release version like v0.3.0", tag)
-	}
-	if current != "" {
-		cur, _ := parseSemver(current)
-		if *want == "" && !semverLess(cur, target) {
-			say("dotsync %s is up to date", current)
-			return 0, nil
-		}
-	}
-	if *check {
-		if current == "" {
-			say("latest release: %s (this is a development build)", tag)
-		} else {
-			say("update available: %s → %s (run `dotsync update`)", current, strings.TrimPrefix(tag, "v"))
-		}
+	target, _ := parseSemver(tag)
+	if cur, ok := parseSemver(current); ok && *want == "" && !semverLess(cur, target) {
+		say("dotsync %s is up to date", current)
 		return 0, nil
 	}
-	if current == "" && *want == "" {
+	version := strings.TrimPrefix(tag, "v")
+	switch {
+	case *check && current == "":
+		say("latest release: %s (this is a development build)", tag)
+		return 0, nil
+	case *check:
+		say("update available: %s → %s (run `dotsync update`)", current, version)
+		return 0, nil
+	case current == "" && *want == "":
 		return 1, errors.New("this is a development build; pass --version to replace it with a release")
 	}
 
-	exe, err := updateTarget()
+	targets, err := installTargets()
 	if err != nil {
 		return 1, err
-	}
-	if real, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = real
 	}
 	tmp, err := os.MkdirTemp("", "dotsync-update-")
 	if err != nil {
 		return 1, err
 	}
 	defer os.RemoveAll(tmp)
-
-	version := strings.TrimPrefix(tag, "v")
-	name := fmt.Sprintf("dotsync_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
-	base := fmt.Sprintf("%s/%s/releases/download/%s/", updateDownloadBase, releaseRepo, tag)
-	archive := filepath.Join(tmp, name)
-	say("downloading dotsync %s (%s/%s)", version, runtime.GOOS, runtime.GOARCH)
-	if err := download(ctx, base+name, archive); err != nil {
-		return 1, err
-	}
-	sums := filepath.Join(tmp, "checksums.txt")
-	if err := download(ctx, base+"checksums.txt", sums); err != nil {
-		return 1, err
-	}
-	wantSum, err := expectedChecksum(sums, name)
+	bin, err := downloadRelease(ctx, tag, tmp, *requireAttestation, say)
 	if err != nil {
 		return 1, err
-	}
-	gotSum, err := fileSHA256(archive)
-	if err != nil {
-		return 1, err
-	}
-	if gotSum != wantSum {
-		return 1, fmt.Errorf("checksum mismatch for %s: expected %s, got %s; nothing was changed", name, wantSum, gotSum)
-	}
-	say("checksum verified")
-
-	verified := false
-	if gh, err := exec.LookPath("gh"); err == nil && updateVerifyWithGH {
-		cmd := exec.CommandContext(ctx, gh, "attestation", "verify", archive, "--repo", releaseRepo)
-		if cmd.Run() == nil {
-			verified = true
-			say("build provenance verified (built by %s's release workflow)", releaseRepo)
-		}
-	}
-	if !verified {
-		if *requireAttestation {
-			return 1, errors.New("could not verify build provenance (is the GitHub CLI installed and logged in?); nothing was changed")
-		}
-		say("note: build provenance not checked (install the GitHub CLI to verify it automatically)")
-	}
-
-	bin := filepath.Join(tmp, "dotsync")
-	if err := extractBinary(archive, bin); err != nil {
-		return 1, err
-	}
-	targets := []string{exe}
-	// Keep the copy the background agent runs in step, if it's a different file.
-	if p := NewPaths().Bin; p != exe {
-		if _, err := os.Stat(p); err == nil {
-			targets = append(targets, p)
-		}
 	}
 	for _, t := range targets {
 		if err := replaceBinary(bin, t); err != nil {
@@ -339,11 +289,91 @@ func cmdUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 		say("installed %s", tilde(t))
 	}
-	from := current
-	if from == "" {
-		from = "development build"
-	}
-	say("dotsync %s → %s", from, version)
+	say("dotsync %s → %s", cmp.Or(current, "development build"), version)
 	refreshAgent(say, targets[len(targets)-1])
 	return 0, nil
+}
+
+// releaseTag is the tag to install: the one asked for, or the latest release.
+func releaseTag(ctx context.Context, want string) (string, error) {
+	tag := want
+	if tag == "" {
+		latest, err := latestRelease(ctx)
+		if err != nil {
+			return "", fmt.Errorf("can't check for updates: %w", err)
+		}
+		tag = latest
+	} else if !strings.HasPrefix(tag, "v") {
+		tag = "v" + tag
+	}
+	if _, ok := parseSemver(tag); !ok {
+		return "", fmt.Errorf("%q is not a release version like v0.3.0", tag)
+	}
+	return tag, nil
+}
+
+// installTargets are the binaries to replace: this one, and the copy the background agent runs
+// if that's a different file.
+func installTargets() ([]string, error) {
+	exe, err := updateTarget()
+	if err != nil {
+		return nil, err
+	}
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	targets := []string{exe}
+	if p := NewPaths().Bin; p != exe {
+		if _, err := os.Stat(p); err == nil {
+			targets = append(targets, p)
+		}
+	}
+	return targets, nil
+}
+
+// downloadRelease downloads this platform's archive of tag into dir, verifies its checksum and
+// (when possible) its build provenance, and returns the path of the extracted binary.
+func downloadRelease(ctx context.Context, tag, dir string, requireAttestation bool, say func(string, ...any)) (string, error) {
+	name := fmt.Sprintf("dotsync_%s_%s_%s.tar.gz", strings.TrimPrefix(tag, "v"), runtime.GOOS, runtime.GOARCH)
+	archive := filepath.Join(dir, name)
+	say("downloading dotsync %s (%s/%s)", strings.TrimPrefix(tag, "v"), runtime.GOOS, runtime.GOARCH)
+	if err := download(ctx, releases.assetURL(tag, name), archive); err != nil {
+		return "", err
+	}
+	sums := filepath.Join(dir, "checksums.txt")
+	if err := download(ctx, releases.assetURL(tag, "checksums.txt"), sums); err != nil {
+		return "", err
+	}
+	wantSum, err := expectedChecksum(sums, name)
+	if err != nil {
+		return "", err
+	}
+	gotSum, err := fileSHA256(archive)
+	if err != nil {
+		return "", err
+	}
+	if gotSum != wantSum {
+		return "", fmt.Errorf("checksum mismatch for %s: expected %s, got %s; nothing was changed", name, wantSum, gotSum)
+	}
+	say("checksum verified")
+
+	switch {
+	case verifyProvenance(ctx, archive):
+		say("build provenance verified (built by %s's release workflow)", releases.repo)
+	case requireAttestation:
+		return "", errors.New("could not verify build provenance (is the GitHub CLI installed and logged in?); nothing was changed")
+	default:
+		say("note: build provenance not checked (install the GitHub CLI to verify it automatically)")
+	}
+	bin := filepath.Join(dir, "dotsync")
+	return bin, extractBinary(archive, bin)
+}
+
+// verifyProvenance checks the archive's signed build provenance with the GitHub CLI.
+func verifyProvenance(ctx context.Context, archive string) bool {
+	gh, err := exec.LookPath("gh")
+	if err != nil || !releases.verifyWithGH {
+		return false
+	}
+	return exec.CommandContext(ctx, gh, "attestation", "verify", archive, "--repo", releases.repo).Run() == nil
 }

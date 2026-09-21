@@ -141,91 +141,108 @@ func planEntry(c *Ctx, e *Entry, base map[string]string, adoptRemote bool) ([]*I
 	if err != nil {
 		return nil, err
 	}
-	var rels []string
-	rootExists := true
-	if e.Kind == kindFile {
-		rels = []string{""}
-	} else {
-		if fi, err := os.Stat(root); err == nil && !fi.IsDir() {
-			return nil, fmt.Errorf("%s exists but is not a directory", e.TargetSpec)
-		}
-		if fi, err := os.Lstat(e.RepoPath); err == nil && !fi.IsDir() {
-			return nil, fmt.Errorf("files/%s in the repository is not a directory", e.Source)
-		}
-		set := map[string]bool{}
-		local, err := walkTree(root, e.Ignore, c.Paths.OwnDirs())
-		if err != nil {
+	rels, rootExists := []string{""}, true
+	if e.Kind == kindDir {
+		if rels, rootExists, err = dirRels(c, e, root, base); err != nil {
 			return nil, err
 		}
-		// A missing or empty directory means "not materialized here" (an unmounted volume, a
-		// reinstall wiping it) rather than "delete everything everywhere".
-		rootExists = len(local) > 0
-		remote, err := walkTree(e.RepoPath, e.Ignore, nil)
-		if err != nil {
-			return nil, err
-		}
-		for _, r := range append(local, remote...) {
-			set[r] = true
-		}
-		for r := range base {
-			if !ignored(r, e.Ignore) {
-				set[r] = true
-			}
-		}
-		for r := range set {
-			rels = append(rels, r)
-		}
-		sort.Strings(rels)
 	}
-
 	var items []*Item
 	for _, rel := range rels {
-		lp, rp := root, e.RepoPath
-		if rel != "" {
-			lp = filepath.Join(root, filepath.FromSlash(rel))
-			rp = filepath.Join(e.RepoPath, filepath.FromSlash(rel))
+		it, err := planItem(c, e, root, rel, base[rel], rootExists, adoptRemote)
+		if err != nil {
+			return nil, err
 		}
-		it := &Item{Entry: e, Rel: rel, Local: lp, Repo: rp, B: base[rel], Action: actOK}
 		items = append(items, it)
-		if rel != "" {
-			if err := firstErr(checkAncestors(root, rel), checkAncestors(e.RepoPath, rel)); err != nil {
-				it.Action, it.Note = actError, err.Error()
-				continue
-			}
-		}
-		lobj, lerr := c.cache.obj(lp)
-		robj, rerr := c.cache.obj(rp)
-		if lerr != nil || rerr != nil {
-			it.Action, it.Note = actError, firstErr(lerr, rerr).Error()
-			continue
-		}
-		it.L, it.R = sigOf(lobj), sigOf(robj)
-		if e.Kind == kindFile {
-			if lobj != nil && lobj.Kind != kindFile {
-				return nil, fmt.Errorf("%s is a %s, but the manifest says it is a file", e.TargetSpec, lobj.Kind)
-			}
-			if robj != nil && robj.Kind != kindFile {
-				return nil, fmt.Errorf("files/%s in the repository is not a regular file", e.Source)
-			}
-		}
-		if isSpecial(it.L) || isSpecial(it.R) {
-			it.Action, it.Note = actError, "a file on one side is a directory or special file on the other"
-			continue
-		}
-		it.Action = decide(it.L, it.R, it.B, e.Kind == kindDir, rootExists, adoptRemote)
-		if it.Action == actUpload && !e.AllowSecrets {
-			if lobj != nil && lobj.Kind == kindFile && lobj.Data == nil {
-				if lobj, err = readObj(lp); err != nil { // cached answer: fetch content for the scan
-					it.Action, it.Note = actError, err.Error()
-					continue
-				}
-			}
-			if reason := secretReason(lp, lobj); reason != "" {
-				it.Action, it.Note = actBlocked, reason
-			}
-		}
 	}
 	return items, nil
+}
+
+// dirRels lists every file of a directory entry: here, in the repository, or in the base. It also
+// reports whether the local directory has any files.
+func dirRels(c *Ctx, e *Entry, root string, base map[string]string) ([]string, bool, error) {
+	if fi, err := os.Stat(root); err == nil && !fi.IsDir() {
+		return nil, false, fmt.Errorf("%s exists but is not a directory", e.TargetSpec)
+	}
+	if fi, err := os.Lstat(e.RepoPath); err == nil && !fi.IsDir() {
+		return nil, false, fmt.Errorf("files/%s in the repository is not a directory", e.Source)
+	}
+	local, err := walkTree(root, e.Ignore, c.Paths.OwnDirs())
+	if err != nil {
+		return nil, false, err
+	}
+	remote, err := walkTree(e.RepoPath, e.Ignore, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	set := map[string]bool{}
+	for _, r := range append(local, remote...) {
+		set[r] = true
+	}
+	for r := range base {
+		if !ignored(r, e.Ignore) {
+			set[r] = true
+		}
+	}
+	rels := make([]string, 0, len(set))
+	for r := range set {
+		rels = append(rels, r)
+	}
+	sort.Strings(rels)
+	// A missing or empty directory means "not materialized here" (an unmounted volume, a
+	// reinstall wiping it) rather than "delete everything everywhere".
+	return rels, len(local) > 0, nil
+}
+
+// planItem decides what to do with one file. Problems with the file itself are reported on the
+// item; an error means the whole entry is inconsistent with the manifest.
+func planItem(c *Ctx, e *Entry, root, rel, base string, rootExists, adoptRemote bool) (*Item, error) {
+	lp, rp := root, e.RepoPath
+	if rel != "" {
+		lp = filepath.Join(root, filepath.FromSlash(rel))
+		rp = filepath.Join(e.RepoPath, filepath.FromSlash(rel))
+	}
+	it := &Item{Entry: e, Rel: rel, Local: lp, Repo: rp, B: base, Action: actOK}
+	fail := func(err error) (*Item, error) {
+		it.Action, it.Note = actError, err.Error()
+		return it, nil
+	}
+	if rel != "" {
+		if err := firstErr(checkAncestors(root, rel), checkAncestors(e.RepoPath, rel)); err != nil {
+			return fail(err)
+		}
+	}
+	lobj, lerr := c.cache.obj(lp)
+	robj, rerr := c.cache.obj(rp)
+	if err := firstErr(lerr, rerr); err != nil {
+		return fail(err)
+	}
+	it.L, it.R = sigOf(lobj), sigOf(robj)
+	if e.Kind == kindFile {
+		if lobj != nil && lobj.Kind != kindFile {
+			return nil, fmt.Errorf("%s is a %s, but the manifest says it is a file", e.TargetSpec, lobj.Kind)
+		}
+		if robj != nil && robj.Kind != kindFile {
+			return nil, fmt.Errorf("files/%s in the repository is not a regular file", e.Source)
+		}
+	}
+	if isSpecial(it.L) || isSpecial(it.R) {
+		return fail(errors.New("a file on one side is a directory or special file on the other"))
+	}
+	it.Action = decide(it.L, it.R, it.B, e.Kind == kindDir, rootExists, adoptRemote)
+	if it.Action != actUpload || e.AllowSecrets {
+		return it, nil
+	}
+	if lobj != nil && lobj.Kind == kindFile && lobj.Data == nil {
+		var err error
+		if lobj, err = readObj(lp); err != nil { // cached answer: fetch content for the scan
+			return fail(err)
+		}
+	}
+	if reason := secretReason(lp, lobj); reason != "" {
+		it.Action, it.Note = actBlocked, reason
+	}
+	return it, nil
 }
 
 func firstErr(errs ...error) error {
@@ -325,70 +342,14 @@ func buildPlan(c *Ctx, st *State, fetch bool) (*Plan, error) {
 		}
 	}
 	c.cache = newStatCache(st.StatCache)
-	head, base, err := c.headAndOrigin()
-	if err != nil {
+	if err := resetCache(c, st, p); err != nil {
 		return nil, err
 	}
-	p.BaseCommit = base
-	// The cache clone only needs resetting if a previous run modified its working tree (the
-	// marker is created before any modification and removed after a reset) or HEAD moved.
-	today := time.Now().Format("2006-01-02")
-	if head != base || c.repoDirty() || st.LastReset != today {
-		if _, err := c.Git.Must("reset", "-q", "--hard", p.BaseCommit); err != nil {
-			return nil, err
-		}
-		if _, err := c.Git.Must("clean", "-q", "-ffdx"); err != nil {
-			return nil, err
-		}
-		c.markRepoClean()
-		st.LastReset = today
-	}
-	m, err := loadManifest(c.Paths.Repo)
-	if err != nil {
+	if err := replayOps(c, st, p); err != nil {
 		return nil, err
 	}
-	original := m.canonical()
-	if len(st.PendingOps) > 0 {
-		c.markRepoDirty() // replaying a remove deletes files from the working tree
-	}
-	for _, op := range st.PendingOps {
-		if err := applyOp(c, m, op); err != nil {
-			var te *transientError
-			if errors.As(err, &te) {
-				return nil, err
-			}
-			p.OpErrors = append(p.OpErrors, opError{op, err.Error()})
-		} else {
-			p.AppliedOps = append(p.AppliedOps, op)
-		}
-	}
-	p.Manifest = m
-	p.ManifestChanged = m.canonical() != original
 	resolveEntries(c, p)
-
-	bySource := map[string]*Entry{}
-	for _, e := range p.Entries {
-		bySource[e.Source] = e
-	}
-	var forgotten []string
-	for src, es := range st.Entries {
-		if _, bad := p.EntryErrors[src]; bad {
-			continue // keep the base through transient errors
-		}
-		e := bySource[src]
-		if e != nil && es.Kind == e.Kind && es.Target != e.TargetSpec {
-			// Same place written differently (e.g. ~/.config/x vs $XDG_CONFIG_HOME/x): keep the base.
-			if old, err := expandTarget(es.Target, c.Paths); err == nil && old == e.Target {
-				es.Target = e.TargetSpec
-			}
-		}
-		if e == nil || es.Target != e.TargetSpec || es.Kind != e.Kind {
-			forgotten = append(forgotten, src) // no longer managed here: local files stay as they are
-		}
-	}
-	sort.Strings(forgotten)
-	p.Forget = forgotten
-
+	p.Forget = forgottenEntries(c, st, p)
 	for _, e := range p.Entries {
 		base := map[string]string{}
 		es := st.Entries[e.Source]
@@ -408,4 +369,81 @@ func buildPlan(c *Ctx, st *State, fetch bool) (*Plan, error) {
 		p.Items = append(p.Items, items...)
 	}
 	return p, nil
+}
+
+// resetCache resets the cache clone to the remote's commit. That's only needed if a previous run
+// modified its working tree (the marker is created before any modification and removed after a
+// reset) or HEAD moved; and once a day regardless.
+func resetCache(c *Ctx, st *State, p *Plan) error {
+	head, base, err := c.headAndOrigin()
+	if err != nil {
+		return err
+	}
+	p.BaseCommit = base
+	today := time.Now().Format("2006-01-02")
+	if head == base && !c.repoDirty() && st.LastReset == today {
+		return nil
+	}
+	if _, err := c.Git.Must("reset", "-q", "--hard", base); err != nil {
+		return err
+	}
+	if _, err := c.Git.Must("clean", "-q", "-ffdx"); err != nil {
+		return err
+	}
+	c.markRepoClean()
+	st.LastReset = today
+	return nil
+}
+
+// replayOps applies this machine's queued manifest changes on top of the remote's manifest.
+func replayOps(c *Ctx, st *State, p *Plan) error {
+	m, err := loadManifest(c.Paths.Repo)
+	if err != nil {
+		return err
+	}
+	original := m.canonical()
+	if len(st.PendingOps) > 0 {
+		c.markRepoDirty() // replaying a remove deletes files from the working tree
+	}
+	for _, op := range st.PendingOps {
+		if err := applyOp(c, m, op); err != nil {
+			var te *transientError
+			if errors.As(err, &te) {
+				return err
+			}
+			p.OpErrors = append(p.OpErrors, opError{op, err.Error()})
+		} else {
+			p.AppliedOps = append(p.AppliedOps, op)
+		}
+	}
+	p.Manifest = m
+	p.ManifestChanged = m.canonical() != original
+	return nil
+}
+
+// forgottenEntries are entries with a base here that are no longer managed here (removed,
+// excluded, or moved): their base is dropped and their local files stay as they are.
+func forgottenEntries(c *Ctx, st *State, p *Plan) []string {
+	bySource := map[string]*Entry{}
+	for _, e := range p.Entries {
+		bySource[e.Source] = e
+	}
+	var forgotten []string
+	for src, es := range st.Entries {
+		if _, bad := p.EntryErrors[src]; bad {
+			continue // keep the base through transient errors
+		}
+		e := bySource[src]
+		if e != nil && es.Kind == e.Kind && es.Target != e.TargetSpec {
+			// Same place written differently (e.g. ~/.config/x vs $XDG_CONFIG_HOME/x): keep the base.
+			if old, err := expandTarget(es.Target, c.Paths); err == nil && old == e.Target {
+				es.Target = e.TargetSpec
+			}
+		}
+		if e == nil || es.Target != e.TargetSpec || es.Kind != e.Kind {
+			forgotten = append(forgotten, src)
+		}
+	}
+	sort.Strings(forgotten)
+	return forgotten
 }

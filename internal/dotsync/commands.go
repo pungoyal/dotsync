@@ -1,6 +1,7 @@
 package dotsync
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -49,36 +50,76 @@ func versionString() string {
 	return s + " " + runtime.Version() + " " + runtime.GOOS + "/" + runtime.GOARCH
 }
 
-const usage = `dotsync — synchronize dotfiles across macOS and Linux machines via a shared git repository
+// command is one subcommand. The usage text and dispatch are both built from commandGroups,
+// so they can't drift apart.
+type command struct {
+	name    string
+	aliases []string
+	args    string
+	summary string
+	run     func(args []string, stdout, stderr io.Writer) (int, error)
+}
 
-usage: dotsync <command> [options]
+var commandGroups = []struct {
+	title    string
+	commands []command
+}{
+	{"setup", []command{
+		{name: "init", args: "<git-url>", summary: "set up this machine: clone, first sync, install the background agent", run: cmdInit},
+		{name: "doctor", summary: "check the setup and explain how to fix problems", run: cmdDoctor},
+		{name: "update", summary: "install the latest release (verified)", run: cmdUpdate},
+		{name: "agent", args: "install|uninstall|status", summary: "manage the background agent", run: cmdAgent},
+	}},
+	{"managing files (changes apply to every machine)", []command{
+		{name: "add", args: "<path>...", summary: "start managing files or directories", run: cmdAdd},
+		{name: "remove", aliases: []string{"rm"}, args: "<path|source>...", summary: "stop managing (local copies are kept on every machine)", run: cmdRemove},
+		{name: "set", args: "<path|source> ...", summary: "change an entry: --ignore, --os, --mode, --write, -d, …", run: cmdSet},
+		{name: "describe", args: "<path|source> <text>", summary: "change an entry's description", run: cmdDescribe},
+	}},
+	{"this machine only", []command{
+		{name: "exclude", args: "<path|source>", summary: "stop managing an entry here (files are left as they are)", run: cmdExclude},
+		{name: "include", args: "<path|source>", summary: "manage an excluded entry here again", run: cmdInclude},
+	}},
+	{"everyday", []command{
+		{name: "status", aliases: []string{"st"}, summary: "managed files and their state on this machine", run: cmdStatus},
+		{name: "list", aliases: []string{"ls"}, summary: "the shared manifest", run: cmdList},
+		{name: "sync", summary: "synchronize now (the agent does this periodically)", run: cmdSync},
+		{name: "diff", args: "[path...]", summary: "differences between this machine and the remote", run: cmdDiff},
+		{name: "resolve", args: "<path>... --keep local|remote", summary: "settle a conflict", run: cmdResolve},
+		{name: "log", summary: "recent changes to the shared repository", run: cmdLog},
+	}},
+}
 
-setup
-  init <git-url>          set up this machine: clone, first sync, install the background agent
-  doctor                  check the setup and explain how to fix problems
-  update                  install the latest release (verified)
-  agent install|uninstall|status
+func findCommand(name string) *command {
+	for _, g := range commandGroups {
+		for i, cmd := range g.commands {
+			if cmd.name == name || containsStr(cmd.aliases, name) {
+				return &g.commands[i]
+			}
+		}
+	}
+	return nil
+}
 
-managing files (changes apply to every machine)
-  add <path>...           start managing files or directories
-  remove <path|source>... stop managing (local copies are kept on every machine)
-  set <path|source> ...   change an entry: --ignore, --os, --mode, --write, -d, …
-  describe <path|source> <text>
-
-this machine only
-  exclude <path|source>   stop managing an entry here (files are left as they are)
-  include <path|source>   manage an excluded entry here again
-
-everyday
-  status                  managed files and their state on this machine
-  list                    the shared manifest
-  sync                    synchronize now (the agent does this periodically)
-  diff [path...]          differences between this machine and the remote
-  resolve <path>... --keep local|remote
-  log                     recent changes to the shared repository
-
-Run 'dotsync <command> -h' for a command's options.
-`
+func usage() string {
+	const width = 24
+	var b strings.Builder
+	b.WriteString("dotsync — synchronize dotfiles across macOS and Linux machines via a shared git repository\n\n")
+	b.WriteString("usage: dotsync <command> [options]\n")
+	for _, g := range commandGroups {
+		fmt.Fprintf(&b, "\n%s\n", g.title)
+		for _, cmd := range g.commands {
+			left := strings.TrimSpace(cmd.name + " " + cmd.args)
+			if len(left) >= width {
+				fmt.Fprintf(&b, "  %s\n  %-*s%s\n", left, width, "", cmd.summary)
+			} else {
+				fmt.Fprintf(&b, "  %-*s%s\n", width, left, cmd.summary)
+			}
+		}
+	}
+	b.WriteString("\nRun 'dotsync help <command>' for a command's options.\n")
+	return b.String()
+}
 
 type stringList []string
 
@@ -109,26 +150,27 @@ func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 
 // Run is the program entry point; it returns the process exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprint(stdout, usage)
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		fmt.Fprint(stdout, usage())
 		return 0
 	}
 	if args[0] == "--version" || args[0] == "version" {
 		fmt.Fprintln(stdout, versionString())
 		return 0
 	}
-	commands := map[string]func([]string, io.Writer, io.Writer) (int, error){
-		"init": cmdInit, "add": cmdAdd, "remove": cmdRemove, "rm": cmdRemove, "describe": cmdDescribe,
-		"set": cmdSet, "exclude": cmdExclude, "include": cmdInclude, "doctor": cmdDoctor, "update": cmdUpdate,
-		"sync": cmdSync, "status": cmdStatus, "st": cmdStatus, "list": cmdList, "ls": cmdList,
-		"diff": cmdDiff, "resolve": cmdResolve, "log": cmdLog, "agent": cmdAgent,
+	if args[0] == "help" {
+		if len(args) == 1 {
+			fmt.Fprint(stdout, usage())
+			return 0
+		}
+		args = []string{args[1], "-h"} // `help <command>` is `<command> -h`
 	}
-	fn, ok := commands[args[0]]
-	if !ok {
-		fmt.Fprintf(stderr, "dotsync: unknown command %q\n\n%s", args[0], usage)
+	cmd := findCommand(args[0])
+	if cmd == nil {
+		fmt.Fprintf(stderr, "dotsync: unknown command %q\n\n%s", args[0], usage())
 		return 2
 	}
-	code, err := fn(args[1:], stdout, stderr)
+	code, err := cmd.run(args[1:], stdout, stderr)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -149,6 +191,20 @@ func newFlags(name, args string, stderr io.Writer) *flag.FlagSet {
 		fs.PrintDefaults()
 	}
 	return fs
+}
+
+// usageError prints a command's usage and reports msg as a usage error.
+func usageError(fs *flag.FlagSet, msg string) (int, error) {
+	fs.Usage()
+	return 2, errors.New(msg)
+}
+
+// syncAfter syncs after a change, unless the user asked only to queue it.
+func syncAfter(c *Ctx, noSync bool) (int, error) {
+	if noSync {
+		return 0, nil
+	}
+	return syncAndReport(c)
 }
 
 func withLock(c *Ctx, wait time.Duration, fn func() error) error {
@@ -323,28 +379,34 @@ func applyOpNoFS(c *Ctx, m *Manifest, op *Op) error {
 	return applyOp(c, m, op)
 }
 
+// addOptions are the flags of `dotsync add` that shape each new entry.
+type addOptions struct {
+	source, desc string
+	ignore, oses []string
+	allowSecrets bool
+}
+
 func cmdAdd(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("add", "[options] <path>...", stderr)
-	source := fs.String("source", "", "path inside the repository's files/ (default: derived from the path)")
-	desc := fs.String("d", "", "short human-readable description")
-	fs.StringVar(desc, "description", "", "same as -d")
-	var ignore, oses stringList
-	fs.Var(&ignore, "ignore", "for directories: glob of names/paths not to sync (repeatable)")
-	fs.Var(&oses, "os", "only manage on this OS: darwin or linux (repeatable)")
-	allowSecrets := fs.Bool("allow-secrets", false, "allow content that looks like credentials")
+	var o addOptions
+	fs.StringVar(&o.source, "source", "", "path inside the repository's files/ (default: derived from the path)")
+	fs.StringVar(&o.desc, "d", "", "short human-readable description")
+	fs.StringVar(&o.desc, "description", "", "same as -d")
+	fs.Var((*stringList)(&o.ignore), "ignore", "for directories: glob of names/paths not to sync (repeatable)")
+	fs.Var((*stringList)(&o.oses), "os", "only manage on this OS: darwin or linux (repeatable)")
+	fs.BoolVar(&o.allowSecrets, "allow-secrets", false, "allow content that looks like credentials")
 	noSync := fs.Bool("no-sync", false, "only queue the change; the next sync pushes it")
 	paths, err := parseArgs(fs, args)
 	if err != nil {
 		return 2, err
 	}
 	if len(paths) == 0 {
-		fs.Usage()
-		return 2, errors.New("nothing to add")
+		return usageError(fs, "nothing to add")
 	}
-	if (*source != "" || *desc != "") && len(paths) > 1 {
+	if (o.source != "" || o.desc != "") && len(paths) > 1 {
 		return 2, errors.New("-source and -d can only be used when adding a single path")
 	}
-	if err := validateOS(oses); err != nil {
+	if err := validateOS(o.oses); err != nil {
 		return 2, err
 	}
 	c, err := newCtx(true, false, stdout, stderr)
@@ -358,90 +420,104 @@ func cmdAdd(args []string, stdout, stderr io.Writer) (int, error) {
 			return err
 		}
 		for _, arg := range paths {
-			path := absPath(arg)
-			if !isWithin(path, homeDir()) || path == homeDir() {
-				return fmt.Errorf("%s: only paths inside the home directory can be managed", arg)
+			op, err := addOp(c, arg, o)
+			if err == nil {
+				err = applyOpNoFS(c, m, op)
 			}
-			for _, d := range c.Paths.OwnDirs() {
-				if isWithin(path, d) {
-					return fmt.Errorf("%s: that is dotsync's own data", arg)
-				}
-			}
-			fi, err := os.Stat(path)
 			if err != nil {
 				return fmt.Errorf("%s: %w", arg, err)
 			}
-			kind := kindFile
-			if fi.IsDir() {
-				kind = kindDir
-			} else if !fi.Mode().IsRegular() {
-				return fmt.Errorf("%s: only regular files and directories can be managed", arg)
-			}
-			src := *source
-			if src == "" {
-				src = defaultSource(path)
-			}
-			if src, err = normalizeSource(src); err != nil {
-				return err
-			}
-			description := *desc
-			if description == "" {
-				description = filepath.Base(path)
-			}
-			entry := map[string]any{"source": src, "target": tilde(path), "description": description, "type": kind}
-			if len(ignore) > 0 {
-				entry["ignore"] = []string(ignore)
-			}
-			if len(oses) > 0 {
-				entry["os"] = []string(oses)
-			}
-			real, _ := filepath.EvalSymlinks(path)
-			if *allowSecrets {
-				entry["allow_secrets"] = true
-			} else if kind == kindFile {
-				o, err := readObj(real)
-				if err != nil {
-					return err
-				}
-				if reason := secretReason(path, o); reason != "" {
-					return fmt.Errorf("%s: refusing to manage it: %s (use -allow-secrets if the remote is meant to hold it)", arg, reason)
-				}
-			} else {
-				files, _ := walkTree(real, append(append([]string(nil), defaultIgnore...), ignore...), c.Paths.OwnDirs())
-				var held []string
-				for _, f := range files {
-					if secretPathReason(filepath.Join(path, f)) == "" {
-						continue
-					}
-					if o, err := readObj(filepath.Join(real, f)); err != nil || secretReason(filepath.Join(path, f), o) != "" {
-						held = append(held, f)
-					}
-				}
-				if len(held) > 0 {
-					c.say("note: %d file(s) under %s look like secrets and will not be sent (e.g. %s)", len(held), tilde(path), held[0])
-				}
-			}
-			// JSON round trip so the queued entry has the same shape as one read from disk.
-			var normalized map[string]any
-			b, _ := json.Marshal(entry)
-			_ = json.Unmarshal(b, &normalized)
-			op := &Op{ID: newOpID(), Op: "add", Entry: normalized, Queued: nowISO()}
-			if err := applyOpNoFS(c, m, op); err != nil {
-				return fmt.Errorf("%s: %w", arg, err)
-			}
 			st.PendingOps = append(st.PendingOps, op)
-			c.say("managing %s as '%s'", tilde(path), src)
+			c.say("managing %s as '%s'", op.Entry["target"], op.Entry["source"])
 		}
 		if err := saveState(c, st); err != nil {
 			return err
 		}
-		if *noSync {
-			return nil
-		}
-		code, err = syncAndReport(c)
+		code, err = syncAfter(c, *noSync)
 		return err
 	})
 	return code, err
+}
+
+// addOp checks that arg can be managed and returns the queued op that adds it.
+func addOp(c *Ctx, arg string, o addOptions) (*Op, error) {
+	path := absPath(arg)
+	if !isWithin(path, homeDir()) || path == homeDir() {
+		return nil, errors.New("only paths inside the home directory can be managed")
+	}
+	for _, d := range c.Paths.OwnDirs() {
+		if isWithin(path, d) {
+			return nil, errors.New("that is dotsync's own data")
+		}
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	kind := kindFile
+	if fi.IsDir() {
+		kind = kindDir
+	} else if !fi.Mode().IsRegular() {
+		return nil, errors.New("only regular files and directories can be managed")
+	}
+	src := o.source
+	if src == "" {
+		src = defaultSource(path)
+	}
+	if src, err = normalizeSource(src); err != nil {
+		return nil, err
+	}
+	description := o.desc
+	if description == "" {
+		description = filepath.Base(path)
+	}
+	entry := map[string]any{"source": src, "target": tilde(path), "description": description, "type": kind}
+	if len(o.ignore) > 0 {
+		entry["ignore"] = o.ignore
+	}
+	if len(o.oses) > 0 {
+		entry["os"] = o.oses
+	}
+	if o.allowSecrets {
+		entry["allow_secrets"] = true
+	} else if err := checkNewSecrets(c, path, kind, o.ignore); err != nil {
+		return nil, err
+	}
+	// JSON round trip so the queued entry has the same shape as one read from disk.
+	var normalized map[string]any
+	b, _ := json.Marshal(entry)
+	_ = json.Unmarshal(b, &normalized)
+	return &Op{ID: newOpID(), Op: "add", Entry: normalized, Queued: nowISO()}, nil
+}
+
+// checkNewSecrets refuses a file that looks like it holds a secret. For a directory it only
+// warns: those files are held back on every sync, while the rest of the directory syncs.
+func checkNewSecrets(c *Ctx, path, kind string, ignore []string) error {
+	real, _ := filepath.EvalSymlinks(path)
+	if kind == kindFile {
+		o, err := readObj(real)
+		if err != nil {
+			return err
+		}
+		if reason := secretReason(path, o); reason != "" {
+			return fmt.Errorf("refusing to manage it: %s (use -allow-secrets if the remote is meant to hold it)", reason)
+		}
+		return nil
+	}
+	files, _ := walkTree(real, append(append([]string(nil), defaultIgnore...), ignore...), c.Paths.OwnDirs())
+	var held []string
+	for _, f := range files {
+		if secretPathReason(filepath.Join(path, f)) == "" {
+			continue
+		}
+		if o, err := readObj(filepath.Join(real, f)); err != nil || secretReason(filepath.Join(path, f), o) != "" {
+			held = append(held, f)
+		}
+	}
+	if len(held) > 0 {
+		c.say("note: %d file(s) under %s look like secrets and will not be sent (e.g. %s)", len(held), tilde(path), held[0])
+	}
+	return nil
 }
 
 func findEntry(c *Ctx, m *Manifest, needle string) map[string]any {
@@ -483,10 +559,7 @@ func queueOps(c *Ctx, needles []string, noSync bool, mk func(raw map[string]any)
 		if err := saveState(c, st); err != nil {
 			return err
 		}
-		if noSync {
-			return nil
-		}
-		code, err = syncAndReport(c)
+		code, err = syncAfter(c, noSync)
 		return err
 	})
 	return code, err
@@ -500,8 +573,7 @@ func cmdRemove(args []string, stdout, stderr io.Writer) (int, error) {
 		return 2, err
 	}
 	if len(needles) == 0 {
-		fs.Usage()
-		return 2, errors.New("nothing to remove")
+		return usageError(fs, "nothing to remove")
 	}
 	c, err := newCtx(true, false, stdout, stderr)
 	if err != nil {
@@ -599,16 +671,36 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	var p *Plan
 	var st *State
-	err = withLock(c, time.Minute, func() error {
-		if st, err = loadState(c); err != nil {
-			return err
-		}
+	err = withState(c, func(s *State) error {
+		st = s
 		p, err = buildPlan(c, st, *fetch)
 		return err
 	})
 	if err != nil {
 		return 1, err
 	}
+	rows := statusRows(p, *verbose)
+	if *asJSON {
+		b, _ := json.MarshalIndent(map[string]any{
+			"host": hostname(), "remote": c.Config.Remote, "branch": c.Config.Branch,
+			"remote_commit": short(p.BaseCommit), "last_sync": st.LastSync, "pending_ops": st.PendingOps,
+			"conflicts": st.Conflicts, "agent": agentStatus(), "entries": rows,
+		}, "", "  ")
+		fmt.Fprintln(stdout, string(b))
+		return 0, nil
+	}
+	printStatusHeader(stdout, c, st, p)
+	if len(rows) == 0 {
+		fmt.Fprintln(stdout, "nothing is managed yet — add something with `dotsync add <path>`")
+		return 0, nil
+	}
+	printStatusTable(stdout, rows, *verbose)
+	printStatusAttention(stdout, st, rows)
+	return 0, nil
+}
+
+// statusRows is one row per manifest entry: managed, skipped here, or broken.
+func statusRows(p *Plan, verbose bool) []entryRow {
 	byEntry := map[string][]*Item{}
 	for _, it := range p.Items {
 		byEntry[it.Entry.Source] = append(byEntry[it.Entry.Source], it)
@@ -620,7 +712,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 		label, note := entryStatus(items, p.EntryErrors[e.Source])
 		row := entryRow{Source: e.Source, Target: e.TargetSpec, Description: e.Description, Type: e.Kind, Status: label, Note: note, Files: len(items)}
 		for _, it := range items {
-			if it.Action != actOK || *verbose {
+			if it.Action != actOK || verbose {
 				row.Items = append(row.Items, ItemReport{it.Display(), it.Action, it.Note})
 			}
 		}
@@ -637,18 +729,10 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Source < rows[j].Source })
+	return rows
+}
 
-	info := map[string]any{
-		"host": hostname(), "remote": c.Config.Remote, "branch": c.Config.Branch,
-		"remote_commit": short(p.BaseCommit), "last_sync": st.LastSync, "pending_ops": st.PendingOps,
-		"conflicts": st.Conflicts, "agent": agentStatus(), "entries": rows,
-	}
-	if *asJSON {
-		b, _ := json.MarshalIndent(info, "", "  ")
-		fmt.Fprintln(stdout, string(b))
-		return 0, nil
-	}
-	w := stdout
+func printStatusHeader(w io.Writer, c *Ctx, st *State, p *Plan) {
 	fmt.Fprintf(w, "dotsync on %s: %s (%s @ %s)\n", hostname(), c.Config.Remote, c.Config.Branch, short(p.BaseCommit))
 	if ls := st.LastSync; ls != nil {
 		extra := ""
@@ -671,10 +755,9 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 		fmt.Fprintf(w, "queued, not yet pushed: %s\n", strings.Join(ops, ", "))
 	}
 	fmt.Fprintln(w)
-	if len(rows) == 0 {
-		fmt.Fprintln(w, "nothing is managed yet — add something with `dotsync add <path>`")
-		return 0, nil
-	}
+}
+
+func printStatusTable(w io.Writer, rows []entryRow, verbose bool) {
 	w1, w2, w3 := len("SOURCE"), len("TARGET"), len("STATUS")
 	for i := range rows {
 		if rows[i].Type == kindDir {
@@ -691,7 +774,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 		if r.Note != "" {
 			fmt.Fprintf(w, "%s↳ %s\n", pad, r.Note)
 		}
-		if r.Type == kindDir || *verbose {
+		if r.Type == kindDir || verbose {
 			for _, it := range r.Items {
 				line := fmt.Sprintf("%s- %s: %s", pad, it.Path, it.Action)
 				if it.Note != "" {
@@ -701,14 +784,17 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 			}
 		}
 	}
-	blocked := false
+}
+
+// printStatusAttention explains what needs the user: held-back secrets and conflicts.
+func printStatusAttention(w io.Writer, st *State, rows []entryRow) {
 	for _, r := range rows {
-		blocked = blocked || strings.HasPrefix(r.Status, "BLOCKED")
-	}
-	if blocked {
-		fmt.Fprintln(w, "\nBLOCKED files look like they contain secrets, so their changes stay on this machine.")
-		fmt.Fprintln(w, "  remove the secret, or mark a false positive with a `dotsync:allow-secret` comment on that line:")
-		fmt.Fprintln(w, "  https://pungoyal.github.io/dotsync/guides/secrets/")
+		if strings.HasPrefix(r.Status, "BLOCKED") {
+			fmt.Fprintln(w, "\nBLOCKED files look like they contain secrets, so their changes stay on this machine.")
+			fmt.Fprintln(w, "  remove the secret, or mark a false positive with a `dotsync:allow-secret` comment on that line:")
+			fmt.Fprintln(w, "  https://pungoyal.github.io/dotsync/guides/secrets/")
+			break
+		}
 	}
 	if len(st.Conflicts) > 0 {
 		fmt.Fprintln(w, "\nconflicts (neither version has been changed):")
@@ -718,7 +804,6 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 		fmt.Fprintln(w, "  inspect: dotsync diff <path>    settle: dotsync resolve <path> --keep local|remote")
 		fmt.Fprintln(w, "  (to merge by hand, edit the local file, then --keep local)")
 	}
-	return 0, nil
 }
 
 func short(sha string) string {
@@ -837,8 +922,7 @@ func cmdResolve(args []string, stdout, stderr io.Writer) (int, error) {
 		return 2, err
 	}
 	if len(needles) == 0 || (*keep != "local" && *keep != "remote") {
-		fs.Usage()
-		return 2, errors.New("need at least one path and --keep local or --keep remote")
+		return usageError(fs, "need at least one path and --keep local or --keep remote")
 	}
 	c, err := newCtx(true, false, stdout, stderr)
 	if err != nil {
@@ -935,21 +1019,10 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 		cfg.Remote = pos[0]
 	}
 	if cfg.Remote == "" {
-		fs.Usage()
-		return 2, errors.New("give the URL of a (private) git repository to sync through")
+		return usageError(fs, "give the URL of a (private) git repository to sync through")
 	}
-	if *branch != "" {
-		cfg.Branch = *branch
-	}
-	if cfg.Branch == "" {
-		cfg.Branch = "main"
-	}
-	if *interval > 0 {
-		cfg.Interval = *interval
-	}
-	if cfg.Interval == 0 {
-		cfg.Interval = defaultInterval
-	}
+	cfg.Branch = cmp.Or(*branch, cfg.Branch, "main")
+	cfg.Interval = cmp.Or(*interval, cfg.Interval, defaultInterval)
 	if *keepLocal {
 		cfg.OnExisting = "conflict"
 	}
@@ -957,51 +1030,13 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 		cfg.Exclude = []string{}
 	}
 	c.Config = cfg
-	g := c.Git
-	if _, err := os.Stat(filepath.Join(c.Paths.Repo, ".git")); err == nil {
-		cur, _ := g.Must("remote", "get-url", "origin")
-		if cur != "" && cur != cfg.Remote {
-			return 1, fmt.Errorf("this machine already syncs with %s; remove %s to switch", cur, tilde(c.Paths.Repo))
-		}
-	} else {
-		if err := os.MkdirAll(filepath.Dir(c.Paths.Repo), 0o700); err != nil {
-			return 1, err
-		}
-		c.say("cloning %s ...", cfg.Remote)
-		r, err := g.run(false, 10*time.Minute, append(append([]string{"clone", "-q", "--no-checkout"}, cloneConfigArgs()...), cfg.Remote, c.Paths.Repo)...)
-		if err != nil {
-			return 1, err
-		}
-		if r.Code != 0 {
-			if gp := diagnoseGit(c, r.Stderr); gp != nil {
-				return 1, fmt.Errorf("git clone failed: %s\n  %s\n  → %s", lastLine(r.Stderr), gp.Problem, gp.Fix)
-			}
-			return 1, fmt.Errorf("git clone failed: %s", lastLine(r.Stderr))
-		}
+	if err := ensureClone(c); err != nil {
+		return 1, err
 	}
 	var res *SyncResult
 	err = withLock(c, time.Minute, func() error {
-		if err := configureRepo(g); err != nil {
+		if err := prepareRemote(c); err != nil {
 			return err
-		}
-		heads, err := g.Must("ls-remote", "--heads", "origin")
-		if err != nil {
-			return err
-		}
-		if !hasHead(heads, cfg.Branch) {
-			if strings.TrimSpace(heads) != "" {
-				return fmt.Errorf("the remote has branches but no '%s'; pass -branch", cfg.Branch)
-			}
-			c.say("remote is empty; creating the manifest")
-			if err := initRepo(c); err != nil {
-				return err
-			}
-		}
-		if ok, ferr := c.fetch(); !ok {
-			if gp := diagnoseGit(c, ferr); gp != nil {
-				return fmt.Errorf("cannot fetch from %s: %s\n  → %s", cfg.Remote, gp.Problem, gp.Fix)
-			}
-			return fmt.Errorf("cannot fetch from %s: %s", cfg.Remote, lastLine(ferr))
 		}
 		if err := writeJSON(c.Paths.Config, cfg, 0o600); err != nil {
 			return err
@@ -1032,6 +1067,61 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 		}
 	}
 	return code, nil
+}
+
+// ensureClone clones the remote into the cache, unless a clone of it is already there.
+func ensureClone(c *Ctx) error {
+	if _, err := os.Stat(filepath.Join(c.Paths.Repo, ".git")); err == nil {
+		cur, _ := c.Git.Must("remote", "get-url", "origin")
+		if cur != "" && cur != c.Config.Remote {
+			return fmt.Errorf("this machine already syncs with %s; remove %s to switch", cur, tilde(c.Paths.Repo))
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(c.Paths.Repo), 0o700); err != nil {
+		return err
+	}
+	c.say("cloning %s ...", c.Config.Remote)
+	r, err := c.Git.run(false, 10*time.Minute, append(append([]string{"clone", "-q", "--no-checkout"}, cloneConfigArgs()...), c.Config.Remote, c.Paths.Repo)...)
+	if err != nil {
+		return err
+	}
+	if r.Code != 0 {
+		return gitError("git clone failed", c, r.Stderr)
+	}
+	return nil
+}
+
+// prepareRemote configures the cache clone, initializes an empty remote and fetches it.
+func prepareRemote(c *Ctx) error {
+	if err := configureRepo(c.Git); err != nil {
+		return err
+	}
+	heads, err := c.Git.Must("ls-remote", "--heads", "origin")
+	if err != nil {
+		return err
+	}
+	if !hasHead(heads, c.Config.Branch) {
+		if strings.TrimSpace(heads) != "" {
+			return fmt.Errorf("the remote has branches but no '%s'; pass -branch", c.Config.Branch)
+		}
+		c.say("remote is empty; creating the manifest")
+		if err := initRepo(c); err != nil {
+			return err
+		}
+	}
+	if ok, ferr := c.fetch(); !ok {
+		return gitError("cannot fetch from "+c.Config.Remote, c, ferr)
+	}
+	return nil
+}
+
+// gitError reports a failed git command, with the problem and fix when the cause is known.
+func gitError(what string, c *Ctx, stderr string) error {
+	if gp := diagnoseGit(c, stderr); gp != nil {
+		return fmt.Errorf("%s: %s\n  %s\n  → %s", what, lastLine(stderr), gp.Problem, gp.Fix)
+	}
+	return fmt.Errorf("%s: %s", what, lastLine(stderr))
 }
 
 func hasHead(lsRemote, branch string) bool {
