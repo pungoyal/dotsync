@@ -796,9 +796,6 @@ func TestEncryptedFiles(t *testing.T) {
 }
 
 func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
-	for _, v := range []string{"SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE"} {
-		t.Setenv(v, "")
-	}
 	w := newWorld(t)
 	a, b := w.machine("alpha"), w.machine("beta")
 	a.init()
@@ -813,19 +810,10 @@ func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
 		t.Fatal("sops file was not sent")
 	}
 
-	// A machine without the key is told it needs one; once the key is there, the warning goes away.
 	b.init()
 	b.expect(".config/mise/.env.yaml", sopsYAML)
 	if b.exists(".config/mise/age.txt") {
 		t.Fatal("age key reached another machine")
-	}
-	_, out = b.run("doctor")
-	if !strings.Contains(out, "1 managed file is encrypted with age, but this machine has no age key") {
-		t.Fatalf("doctor didn't report the missing age key:\n%s", out)
-	}
-	b.write(".config/mise/age.txt", fakeAgeKey+"\n")
-	if _, out = b.run("doctor"); strings.Contains(out, "no age key") {
-		t.Fatalf("doctor still reports a missing age key:\n%s", out)
 	}
 }
 
@@ -1244,11 +1232,11 @@ func TestDiagnoseGit(t *testing.T) {
 	}{
 		{"Host key verification failed.\nfatal: Could not read from remote repository.", "host key", "ssh -T git@github.com"},
 		{"git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.", "rejected the SSH key", "ssh-add"},
-		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", "no stored credentials", "gh auth setup-git"},
-		{"remote: Invalid username or password.\nfatal: Authentication failed for 'https://github.com/x/y/'", "rejected the stored credentials", "gh auth login"},
+		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", "no stored credentials", "credential helper"},
+		{"remote: Invalid username or password.\nfatal: Authentication failed for 'https://github.com/x/y/'", "rejected the stored credentials", "renew them"},
 		{"remote: Repository not found.\nfatal: repository 'https://github.com/x/y/' not found", "doesn't exist", "config.json"},
 		{"/usr/bin/gh auth git-credential get: /usr/bin/gh: No such file or directory\nfatal: could not read Username for 'https://github.com': terminal prompts disabled",
-			"/usr/bin/gh, which isn't installed", "helper = !gh auth git-credential"},
+			"/usr/bin/gh, which isn't installed", "name gh without its path"},
 		{"gh auth git-credential get: gh: command not found\nfatal: could not read Username", "run gh, which isn't installed", "install gh"},
 	} {
 		gp := diagnoseGit(c, tc.stderr)
@@ -1265,8 +1253,14 @@ func TestDiagnoseGit(t *testing.T) {
 			t.Errorf("network failure %q diagnosed as %+v; it should just wait", network, gp)
 		}
 	}
-	if h := remoteHost("https://gitlab.example.com/me/dots.git"); h != "gitlab.example.com" {
-		t.Errorf("remoteHost = %q", h)
+	for remote, want := range map[string]gitRemote{
+		"https://git.example.com/me/dots.git":    {url: "https://git.example.com/me/dots.git", host: "git.example.com", sshTarget: "git.example.com"},
+		"git@git.example.com:me/dots.git":        {url: "git@git.example.com:me/dots.git", host: "git.example.com", sshTarget: "git@git.example.com"},
+		"ssh://me@git.example.com:2222/dots.git": {url: "ssh://me@git.example.com:2222/dots.git", host: "git.example.com", sshTarget: "me@git.example.com"},
+	} {
+		if got := parseRemote(&Ctx{Config: &Config{Remote: remote}}); got != want {
+			t.Errorf("parseRemote(%q) = %+v, want %+v", remote, got, want)
+		}
 	}
 }
 

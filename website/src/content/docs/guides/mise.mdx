@@ -126,7 +126,7 @@ dotsync recognizes sops files and syncs them even though the name looks like a s
 
 Both approaches depend on an age private key, by default `~/.config/mise/age.txt`. mise can also use your SSH key. Anyone with that key and a copy of the repository can read every secret, so it has to stay off the repository. dotsync refuses it by path (`.config/mise/age.txt`, `.config/sops/age/*`) and by content (`AGE-SECRET-KEY-1…`).
 
-Copy it to each new machine yourself, once. Until you do, `dotsync doctor` on that machine warns about any age or sops files it can't find a key for. It doesn't read mise's own config syntax, so it can't tell you about values encrypted with `mise set --age-encrypt`; those show up as missing variables in `mise env` instead:
+Copy it to each new machine yourself, once. dotsync never syncs it, and it doesn't check for it either: until the key is there, the encrypted values simply show up as missing in `mise env`.
 
 <Steps>
 

@@ -210,11 +210,6 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 		if n := len(st.PendingOps); n > 0 {
 			d.add(checkInfo, fmt.Sprintf("%d queued change(s) not yet pushed", n), "", "")
 		}
-		if enc := needsAgeKey(p); len(enc) > 0 && ageKeyFile() == "" {
-			d.add(checkWarn, fmt.Sprintf("%s encrypted with age, but this machine has no age key", plural(len(enc), "managed file is", "managed files are")),
-				"e.g. "+enc[0]+". Keys are never synced, so each machine needs its own copy",
-				"copy your key to ~/.config/mise/age.txt or ~/.config/sops/age/keys.txt (chmod 600); ignore this if you decrypt with an SSH key")
-		}
 		return nil
 	})
 	switch {
@@ -236,53 +231,6 @@ func cmdDoctor(args []string, stdout, stderr io.Writer) (int, error) {
 		return 1, nil
 	}
 	return 0, nil
-}
-
-// needsAgeKey lists managed files (as displayed) whose content can only be read with an age key:
-// age files and sops files with age recipients. Like the secret rules, it knows file formats, not
-// the tools that write them.
-func needsAgeKey(p *Plan) []string {
-	var out []string
-	for _, it := range p.Items {
-		data, err := os.ReadFile(it.Path())
-		if err != nil {
-			if data, err = os.ReadFile(it.Repo); err != nil {
-				continue
-			}
-		}
-		switch encryption(data) {
-		case "age":
-			out = append(out, it.Display())
-		case "sops":
-			if sopsAgeRecipient.Match(data) { // KMS, PGP or Vault keys aren't ours to check
-				out = append(out, it.Display())
-			}
-		}
-	}
-	return out
-}
-
-var sopsAgeRecipient = regexp.MustCompile(`recipient"?\s*[:=]\s*"?age1`)
-
-// ageKeyFile returns where this machine keeps an age key, or "". sops's own locations come first;
-// mise's (which it uses for sops files too) are included because the guide recommends them.
-func ageKeyFile() string {
-	for _, v := range []string{"SOPS_AGE_KEY", "SOPS_AGE_KEY_FILE", "SOPS_AGE_KEY_CMD", "MISE_SOPS_AGE_KEY", "MISE_SOPS_AGE_KEY_FILE"} {
-		if os.Getenv(v) != "" {
-			return "$" + v
-		}
-	}
-	cfg := mustEnvDir("XDG_CONFIG_HOME")
-	for _, f := range []string{
-		filepath.Join(cfg, "sops", "age", "keys.txt"),
-		filepath.Join(homeDir(), "Library", "Application Support", "sops", "age", "keys.txt"),
-		filepath.Join(cfg, "mise", "age.txt"),
-	} {
-		if _, err := os.Stat(f); err == nil {
-			return f
-		}
-	}
-	return ""
 }
 
 func plural(n int, one, many string) string {

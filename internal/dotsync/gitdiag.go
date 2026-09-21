@@ -16,46 +16,38 @@ type gitProblem struct {
 	Fix     string
 }
 
-var (
-	missingProgram = regexp.MustCompile(`(?m):\s*([^\s:]+):\s*(?:No such file or directory|command not found|not found)\s*$`)
-	gitErrors      = []struct {
-		rx      *regexp.Regexp
-		problem string
-		fix     func(host string) string
-	}{
-		{regexp.MustCompile(`(?i)host key verification failed`),
-			"SSH doesn't know %s's host key yet, and dotsync can't ask you to accept it",
-			func(h string) string {
-				return fmt.Sprintf("connect once interactively and accept the key: ssh -T git@%s", h)
-			}},
-		{regexp.MustCompile(`(?i)permission denied \(publickey`),
-			"%s rejected the SSH key, or no key is available to git",
-			func(h string) string {
-				return fmt.Sprintf("load your key (macOS: ssh-add --apple-use-keychain ~/.ssh/id_ed25519) and check: ssh -T git@%s; see %s", h, agentGuide)
-			}},
-		{regexp.MustCompile(`(?i)could not read (username|password)|terminal prompts disabled`),
-			"git has no stored credentials for %s, and dotsync can't prompt for them",
-			func(h string) string {
-				if strings.Contains(h, "github.com") {
-					return "sign in once and let git reuse it: gh auth login, then gh auth setup-git; see " + agentGuide
-				}
-				return "store credentials with a credential helper (osxkeychain on macOS, libsecret on Linux); see " + agentGuide
-			}},
-		{regexp.MustCompile(`(?i)authentication failed|invalid username or password|returned error: 40[13]`),
-			"%s rejected the stored credentials (expired or revoked?)",
-			func(h string) string {
-				if strings.Contains(h, "github.com") {
-					return "sign in again: gh auth login"
-				}
-				return "update the credentials stored for this remote"
-			}},
-		{regexp.MustCompile(`(?i)repository not found|does not appear to be a git repository|not found`),
-			"the repository doesn't exist at that URL, or this account can't access it",
-			func(string) string {
-				return "check the remote in ~/.config/dotsync/config.json and your access to it"
-			}},
-	}
-)
+// gitFailures maps git's error output to an explanation. Hints are built from the configured
+// remote only; nothing here knows about particular hosts or tools.
+var gitFailures = []struct {
+	rx      *regexp.Regexp
+	problem string                   // may contain %s for the remote's host
+	fix     func(r gitRemote) string // how to fix it
+}{
+	{regexp.MustCompile(`(?i)host key verification failed`),
+		"SSH doesn't know %s's host key yet, and dotsync can't ask you to accept it",
+		func(r gitRemote) string { return "connect once and accept the key: ssh -T " + r.sshTarget }},
+	{regexp.MustCompile(`(?i)permission denied \(publickey`),
+		"%s rejected the SSH key, or no key is available to git",
+		func(r gitRemote) string {
+			return "add your key to ssh-agent (ssh-add) and check with: ssh -T " + r.sshTarget + "; see " + agentGuide
+		}},
+	{regexp.MustCompile(`(?i)could not read (username|password)|terminal prompts disabled`),
+		"git has no stored credentials for %s, and dotsync can't prompt for them",
+		func(r gitRemote) string {
+			return "store them with a git credential helper, then check with: git ls-remote " + r.url + "; see " + agentGuide
+		}},
+	{regexp.MustCompile(`(?i)authentication failed|invalid username or password|returned error: 40[13]`),
+		"%s rejected the stored credentials (expired or revoked?)",
+		func(r gitRemote) string {
+			return "renew them in your credential helper, then check with: git ls-remote " + r.url
+		}},
+	{regexp.MustCompile(`(?i)repository not found|does not appear to be a git repository|not found`),
+		"the repository doesn't exist at that URL, or this account can't access it",
+		func(gitRemote) string { return "check the remote in ~/.config/dotsync/config.json and your access to it" }},
+}
+
+// missingProgram matches git (or a helper it runs) failing to find a program.
+var missingProgram = regexp.MustCompile(`(?m):\s*([^\s:]+):\s*(?:No such file or directory|command not found|not found)\s*$`)
 
 // diagnoseGit turns git's error output into a specific problem and fix, or nil when there's
 // nothing the user needs to do (e.g. the network is down).
@@ -63,87 +55,106 @@ func diagnoseGit(c *Ctx, stderr string) *gitProblem {
 	if stderr == "" {
 		return nil
 	}
-	host := remoteHost("")
-	if c != nil && c.Config != nil {
-		host = remoteHost(c.Config.Remote)
-	}
-	// A credential helper (or ssh) that isn't installed here. The most common cause: a git config
-	// synced from another machine that refers to a program by an absolute path.
 	if m := missingProgram.FindStringSubmatch(stderr); m != nil {
-		prog := m[1]
-		where, managed := helperOrigin(c, prog)
-		p := &gitProblem{Problem: fmt.Sprintf("git is configured to run %s, which isn't installed on this machine", prog)}
-		if where != "" {
-			p.Problem += " (set in " + tilde(where) + ")"
-		}
-		if managed {
-			p.Problem += ". That file is synced by dotsync, so the setting probably came from another machine where the program lives elsewhere"
-		}
-		if strings.Contains(prog, "/") {
-			p.Fix = fmt.Sprintf("refer to the program by name so each machine finds its own copy (e.g. helper = !%s auth git-credential), "+
-				"or keep machine-specific settings in a local, unsynced file: https://pungoyal.github.io/dotsync/guides/differences/#tools-that-write-absolute-paths",
-				filepath.Base(prog))
-		} else {
-			p.Fix = "install " + prog + " on this machine, or change the credential helper in that config file"
-		}
-		return p
+		return missingProgramProblem(c, m[1])
 	}
-	for _, e := range gitErrors {
-		if e.rx.MatchString(stderr) {
-			problem := e.problem
+	remote := parseRemote(c)
+	for _, f := range gitFailures {
+		if f.rx.MatchString(stderr) {
+			problem := f.problem
 			if strings.Contains(problem, "%s") {
-				problem = fmt.Sprintf(problem, host)
+				problem = fmt.Sprintf(problem, remote.host)
 			}
-			return &gitProblem{Problem: problem, Fix: e.fix(host)}
+			return &gitProblem{Problem: problem, Fix: f.fix(remote)}
 		}
 	}
 	return nil
 }
 
-// remoteHost extracts the host from an scp-style or URL remote.
-func remoteHost(remote string) string {
-	r := remote
-	if i := strings.Index(r, "://"); i >= 0 {
-		r = r[i+3:]
+// missingProgramProblem explains a git setting that runs a program this machine doesn't have.
+// The usual cause is a git config synced from another machine that names the program by an
+// absolute path.
+func missingProgramProblem(c *Ctx, prog string) *gitProblem {
+	p := &gitProblem{Problem: fmt.Sprintf("git is configured to run %s, which isn't installed on this machine", prog)}
+	s := findSetting(c, prog)
+	if s.file != "" {
+		p.Problem += " (set in " + tilde(s.file) + ")"
 	}
-	if i := strings.Index(r, "@"); i >= 0 {
-		r = r[i+1:]
+	if s.managed {
+		p.Problem += ". That file is synced by dotsync, so the setting probably came from another machine"
 	}
-	if i := strings.IndexAny(r, ":/"); i >= 0 {
-		r = r[:i]
+	switch {
+	case strings.Contains(prog, "/") && s.value != "":
+		p.Fix = fmt.Sprintf("name the program without its path so each machine finds its own copy: %s = %s",
+			s.key, strings.Replace(s.value, prog, filepath.Base(prog), 1))
+	case strings.Contains(prog, "/"):
+		p.Fix = "name " + filepath.Base(prog) + " without its path so each machine finds its own copy"
+	default:
+		p.Fix = "install " + prog + " on this machine, or change the setting that runs it"
 	}
-	if r == "" {
-		return "your git host"
+	p.Fix += ", or keep machine-specific settings in a local, unsynced file: " +
+		"https://pungoyal.github.io/dotsync/guides/differences/#tools-that-write-absolute-paths"
+	return p
+}
+
+type gitRemote struct {
+	url       string
+	host      string
+	sshTarget string // [user@]host, as ssh expects it
+}
+
+// parseRemote extracts the host (and ssh login) from an scp-style or URL remote.
+func parseRemote(c *Ctx) gitRemote {
+	r := gitRemote{host: "your git host", sshTarget: "your git host"}
+	if c == nil || c.Config == nil || c.Config.Remote == "" {
+		return r
 	}
+	r.url = c.Config.Remote
+	rest := r.url
+	if _, after, ok := strings.Cut(rest, "://"); ok {
+		rest = after
+	}
+	if i := strings.IndexAny(rest, ":/"); i >= 0 {
+		rest = rest[:i]
+	}
+	if rest == "" {
+		return r
+	}
+	r.sshTarget = rest
+	r.host = rest[strings.LastIndex(rest, "@")+1:]
 	return r
 }
 
-// helperOrigin finds which config file sets a credential helper that runs prog, and whether that
-// file is one dotsync manages.
-func helperOrigin(c *Ctx, prog string) (string, bool) {
-	if c == nil || c.Git == nil || c.Paths == nil {
-		return "", false
-	}
-	r := c.Git.Try("config", "--show-origin", "--get-regexp", `^credential\..*helper$`)
-	for _, line := range strings.Split(r.Stdout, "\n") {
-		if !strings.Contains(line, prog) || !strings.HasPrefix(line, "file:") {
-			continue
-		}
-		file := strings.TrimPrefix(strings.SplitN(line, "\t", 2)[0], "file:")
-		return file, isManagedPath(c, file)
-	}
-	return "", false
+// gitSetting is a git config value that runs a program, and where it's set.
+type gitSetting struct {
+	file, key, value string
+	managed          bool // the file is one dotsync syncs
 }
 
-// isManagedPath reports whether path is (or is inside) a target managed on this machine.
+// findSetting finds the git config value that mentions prog, and the file that sets it.
+func findSetting(c *Ctx, prog string) gitSetting {
+	if c == nil || c.Git == nil || c.Paths == nil {
+		return gitSetting{}
+	}
+	// --show-origin --list prints "file:<path>\t<key>=<value>" for every setting.
+	for _, line := range strings.Split(c.Git.Try("config", "--show-origin", "--list").Stdout, "\n") {
+		origin, kv, ok := strings.Cut(line, "\t")
+		key, value, _ := strings.Cut(kv, "=")
+		if !ok || !strings.HasPrefix(origin, "file:") || !strings.Contains(value, prog) {
+			continue
+		}
+		file := strings.TrimPrefix(origin, "file:")
+		return gitSetting{file: file, key: key[strings.LastIndex(key, ".")+1:], value: value, managed: isManagedPath(c, file)}
+	}
+	return gitSetting{}
+}
+
+// isManagedPath reports whether path is (or is inside) a target managed on this machine,
+// comparing both as given and with symlinks resolved.
 func isManagedPath(c *Ctx, path string) bool {
 	m, err := loadManifest(c.Paths.Repo)
 	if err != nil {
 		return false
-	}
-	real := path
-	if r, err := filepath.EvalSymlinks(path); err == nil {
-		real = r
 	}
 	for _, raw := range m.Entries {
 		e, err := parseEntry(raw)
@@ -151,16 +162,17 @@ func isManagedPath(c *Ctx, path string) bool {
 			continue
 		}
 		t, err := expandTarget(e.TargetSpec, c.Paths)
-		if err != nil {
-			continue
-		}
-		rt := t
-		if r, err := filepath.EvalSymlinks(t); err == nil {
-			rt = r
-		}
-		if isWithin(path, t) || isWithin(real, rt) {
+		if err == nil && (isWithin(path, t) || isWithin(resolved(path), resolved(t))) {
 			return true
 		}
 	}
 	return false
+}
+
+// resolved is path with symlinks resolved, or path itself if that fails.
+func resolved(path string) string {
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	return path
 }
