@@ -18,14 +18,34 @@ REQUIRE_ATTESTATION="${DOTSYNC_REQUIRE_ATTESTATION:-0}"
 say() { printf '%s\n' "$*" >&2; }
 die() { say "error: $*"; exit 1; }
 
-fetch() { # fetch URL [OUTPUT]
+# fetch URL [OUTPUT] [LABEL]: never hangs silently. Connections time out, a transfer that stalls
+# (under 1 KB/s for 20 s) is aborted and retried, and big downloads show progress.
+fetch() {
 	if command -v curl >/dev/null 2>&1; then
-		if [ -n "${2:-}" ]; then curl -fsSL --retry 3 -o "$2" "$1"; else curl -fsSL --retry 3 "$1"; fi
+		set -- "$1" "${2:-}" "${3:-}"
+		opts="-fL --connect-timeout 15 --speed-limit 1024 --speed-time 20 --retry 3 --retry-delay 2"
+		if [ -n "$3" ] && [ -t 2 ]; then opts="$opts --progress-bar"; else opts="$opts -sS"; fi
+		# If a download fails or stalls, try once more over IPv4: a broken IPv6 route to GitHub's
+		# download host is the most common cause of hangs.
+		# shellcheck disable=SC2086 # opts is a list of flags
+		if [ -n "$2" ]; then
+			curl $opts -o "$2" "$1" || { say "retrying over IPv4…"; curl $opts -4 -o "$2" "$1"; }
+		else
+			curl $opts "$1" || curl $opts -4 "$1"
+		fi
 	elif command -v wget >/dev/null 2>&1; then
-		if [ -n "${2:-}" ]; then wget -q -O "$2" "$1"; else wget -q -O - "$1"; fi
+		if [ -n "${2:-}" ]; then wget -q --timeout=20 --tries=3 -O "$2" "$1"; else wget -q --timeout=20 --tries=3 -O - "$1"; fi
 	else
 		die "need curl or wget"
 	fi
+}
+
+download_hint() {
+	say "error: download failed: $1"
+	say "  if this keeps happening, check your connection to GitHub's download host:"
+	say "    curl -v -o /dev/null $1"
+	say "  or download the archive from https://github.com/$REPO/releases/tag/$VERSION by hand"
+	exit 1
 }
 
 sha256() {
@@ -62,8 +82,8 @@ tmp=$(mktemp -d 2>/dev/null || mktemp -d -t dotsync)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 say "downloading dotsync $VERSION ($os/$arch)"
-fetch "$base/$archive" "$tmp/$archive" || die "download failed: $base/$archive"
-fetch "$base/checksums.txt" "$tmp/checksums.txt" || die "download failed: $base/checksums.txt"
+fetch "$base/$archive" "$tmp/$archive" progress || download_hint "$base/$archive"
+fetch "$base/checksums.txt" "$tmp/checksums.txt" || download_hint "$base/checksums.txt"
 
 expected=$(awk -v f="$archive" '$2 == f { print $1 }' "$tmp/checksums.txt")
 [ -n "$expected" ] || die "$archive is not listed in checksums.txt"
@@ -71,7 +91,8 @@ actual=$(sha256 "$tmp/$archive")
 [ "$expected" = "$actual" ] || die "checksum mismatch for $archive (expected $expected, got $actual)"
 say "checksum verified"
 
-if command -v gh >/dev/null 2>&1 && gh attestation verify "$tmp/$archive" --repo "$REPO" >/dev/null 2>&1; then
+if command -v gh >/dev/null 2>&1 && say "verifying build provenance with gh…" &&
+	gh attestation verify "$tmp/$archive" --repo "$REPO" >/dev/null 2>&1; then
 	say "build provenance verified (built by $REPO's release workflow)"
 elif [ "$REQUIRE_ATTESTATION" = 1 ]; then
 	die "could not verify build provenance (is the GitHub CLI installed and logged in?)"
