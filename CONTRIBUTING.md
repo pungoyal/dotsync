@@ -21,7 +21,10 @@ git clone https://github.com/pungoyal/dotsync && cd dotsync
 make test        # go vet + tests with the race detector
 make lint        # golangci-lint (install: https://golangci-lint.run/welcome/install/)
 make build       # bin/dotsync
+make ci          # what CI checks on a pull request: gofmt, lint, actionlint, tests, govulncheck, docs build
 ```
+
+`make ci` leaves out the slow jobs; `make ci-full` adds the build with the minimum Go version, 30 seconds of fuzzing per target and the release snapshot. The `.deb` checks (lintian, installing with apt) only run in CI.
 
 Try your build without touching your real dotfiles by pointing `HOME` at a scratch directory:
 
