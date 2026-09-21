@@ -1,37 +1,45 @@
 ---
 title: Security model
-description: What dotsync trusts, what it protects against, and how secrets and releases are handled.
+description: What dotsync trusts, what it defends against and what it doesn't, why it keeps secrets out instead of encrypting them, and how to report a vulnerability.
 ---
 
 ## Trust boundaries
 
 | Component | Trusted for |
 |---|---|
-| **Your dotfiles repository** | the content and the list of managed files. Whoever can push to it decides what lands in your home directory |
-| **Each machine** | its own files and its local state. Nothing machine-local is ever uploaded except managed file content |
-| **The git host** | storing and serving the repository. Use a private repository; dotsync adds no encryption |
-| **The dotsync release** | the binary itself. Releases are built in CI with verifiable provenance |
+| **Your dotfiles repository** | the content of your files, and the list of what's managed. Whoever can push to it decides what lands in your home directory |
+| **Each machine** | its own files and its own state. Nothing machine-local is ever uploaded except managed file content |
+| **The git host** | storing and serving the repository. dotsync adds no encryption, so use a private repository |
+| **The dotsync release** | the binary itself. Releases are built in CI, with verifiable provenance |
 
 ## What dotsync defends against
 
-- **Accidentally publishing credentials.** Path and content rules hold back private keys, cloud credentials, tokens and similar material. See the [secret detection rules](/dotsync/reference/secret-rules/).
-- **A manifest pointing somewhere dangerous.** Targets must resolve inside `$HOME` and outside dotsync's own directories. Sources can't escape the repository (`..`) or touch `.git`. Symlinked parent directories inside managed trees are never followed.
+- **Accidentally publishing credentials.** Path and content rules hold back private keys, cloud credentials, tokens and similar material before upload. See the [secret detection rules](/dotsync/reference/secret-rules/).
+- **A manifest pointing somewhere dangerous.** Targets must resolve inside `$HOME`, and outside dotsync's own directories. Sources can't contain `..` or a `.git` component. Parent directories replaced by symlinks inside managed trees are never followed.
 - **Silent data loss.** See [Safety guarantees](/dotsync/concepts/safety/).
-- **Hanging on prompts.** git runs non-interactively (`GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`), and repository hooks are disabled for dotsync's own git operations.
-- **A tampered binary.** Every release archive has a SHA-256 checksum, an SBOM, and a signed [SLSA build provenance](/dotsync/project/verifying-releases/) attestation that ties it to the exact workflow run and commit that built it. The install script verifies both.
+- **Hanging on a prompt.** git runs non-interactively: `GIT_TERMINAL_PROMPT=0`, and SSH in `BatchMode`.
+- **Code running from the repository.** The cache clone has git hooks disabled (`core.hooksPath=/dev/null`), and dotsync commits with `--no-verify`. dotsync never executes your files. git does read your git configuration, including a synced `~/.gitconfig`, so a credential helper configured there runs when dotsync fetches, as it would for any git command.
+- **A tampered binary.** Every release archive has a SHA-256 checksum, an SBOM, and a signed [SLSA build provenance](/dotsync/project/verifying-releases/) attestation that ties it to the workflow run and commit that built it. The install script and `dotsync update` both check the checksum, and the provenance when the GitHub CLI is available.
 
 ## What it doesn't defend against
 
-- **A compromised repository or git-host account.** An attacker who can push to your dotfiles repository can change your shell configuration on every machine. This is true of every dotfile manager. Protect the account (2FA, hardware keys) and consider signed commits.
-- **Secrets that match no rule.** Detection is pattern-based. Keep secrets in separate, unmanaged files, as described in [Keep secrets out](/dotsync/guides/secrets/).
-- **A compromised machine.** Malware on one machine can edit managed files, and those edits sync like yours would.
+- **A compromised repository or git host account.** Someone who can push to your dotfiles repository can change your shell configuration on every machine, and your shell will run it. This is true of every dotfile manager. Protect the account with two-factor authentication or a hardware key, and consider signed commits.
+- **Secrets that match no rule.** Detection is pattern-based. Keep secrets in separate, unmanaged files, as in [Keep secrets out](/dotsync/guides/secrets/).
+- **A compromised machine.** Malware on one machine can edit managed files, and the edits sync like yours would.
 
 ## Why not encrypt secrets into the repository?
 
-Encryption means distributing a key to every machine. That key becomes a new secret to bootstrap, rotate and lose, and it would be a single point of compromise. Keeping secrets **out** of the repository is simpler and fails safe. Use a password manager or the OS keychain for secrets, and let dotsync handle configuration.
+Encryption means getting a key onto every machine. That key becomes a new secret to bootstrap, rotate and lose, and a single point of compromise. Keeping secrets **out** of the repository is simpler, and fails safe. Use a password manager or the OS keychain for secrets, and let dotsync handle configuration.
 
-dotsync doesn't encrypt anything itself, but it doesn't stand in the way if **you** do. Files already encrypted with [age](https://age-encryption.org) or [sops](https://getsops.io), for example by mise, are ciphertext, so they sync like any other file. The key problem above is then yours to manage, and dotsync keeps its side of it: it refuses to sync age private keys, and `dotsync doctor` tells you when a machine has encrypted files but no key. dotsync recognizes **file formats**, not the tools that write them, so this works the same whichever tool you use. See [encrypted files](/dotsync/reference/secret-rules/#encrypted-files).
+dotsync doesn't encrypt anything itself, but it doesn't stand in the way if **you** do. Files already encrypted with [age](https://age-encryption.org) or [sops](https://getsops.io), for example by mise, are ciphertext, so they sync like any other file. Getting the key to each machine is then up to you, and dotsync keeps its side of it: it refuses to sync age private keys, by path and by content. It recognizes encrypted **file formats**, not the tools that write them, so this works whichever tool you use. See [encrypted files](/dotsync/reference/secret-rules/#encrypted-files).
+
+## What dotsync sends, and to whom
+
+- **To your git host:** the manifest and the content of managed files, in commits authored as `dotsync (<host>)` with the email `dotsync@<host>`, where `<host>` is the machine's short hostname or [`DOTSYNC_HOSTNAME`](/dotsync/reference/environment/).
+- **To GitHub, only for `dotsync update` and `dotsync doctor`:** a request to `api.github.com` for the latest release (with your `GITHUB_TOKEN`, if that's set), and for `update`, the release download and, if the GitHub CLI is installed, its provenance check.
+
+Nothing else leaves the machine. There's no telemetry.
 
 ## Reporting a vulnerability
 
-Please report privately through [GitHub's private vulnerability reporting](https://github.com/pungoyal/dotsync/security/advisories/new). The [security policy](https://github.com/pungoyal/dotsync/security/policy) explains what's in scope and the response times.
+Please report it privately, through [GitHub's private vulnerability reporting](https://github.com/pungoyal/dotsync/security/advisories/new). The [security policy](https://github.com/pungoyal/dotsync/security/policy) explains what's in scope and how quickly you'll hear back.

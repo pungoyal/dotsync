@@ -1,100 +1,448 @@
-/* dotsync theme: calm teal accent, neutral slate grays, Inter + JetBrains Mono. */
+/*
+ * dotsync documentation theme.
+ *
+ * Teal accent on cool slate neutrals; Inter for text, JetBrains Mono for code.
+ * Starlight's own variables are overridden first; site-specific tokens are prefixed --ds-.
+ * The four sync outcomes each have a colour, used consistently in diagrams, terminals and tables:
+ *   ok (nothing to do) · in (installed here) · out (sent everywhere) · conflict · blocked (held back)
+ */
+
+/* ------------------------------------------------------------------ tokens: dark (default) */
 
 :root {
 	--sl-font: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--sl-font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
 	--sl-content-width: 46rem;
-	--sl-text-h1: 2.4rem;
+	--sl-sidebar-width: 17.5rem;
+	--sl-text-h1: clamp(2rem, 1.6rem + 1.4vw, 2.5rem);
+	--sl-text-h2: 1.625rem;
+	--sl-text-h3: 1.25rem;
+	--sl-text-h4: 1.0625rem;
+	--sl-line-height: 1.7;
 
-	/* Dark theme (default) */
-	--sl-color-accent-low: #0b2e2b;
-	--sl-color-accent: #14b8a6;
-	--sl-color-accent-high: #99f6e4;
-	--sl-color-white: #ffffff;
-	--sl-color-gray-1: #e8edf2;
-	--sl-color-gray-2: #c3ccd6;
-	--sl-color-gray-3: #8a97a6;
-	--sl-color-gray-4: #566273;
-	--sl-color-gray-5: #364152;
-	--sl-color-gray-6: #1c2533;
-	--sl-color-black: #0f1520;
+	--sl-color-accent-low: #0b2f2c;
+	--sl-color-accent: #2dd4bf;
+	--sl-color-accent-high: #a7f3e6;
+	--sl-color-white: #f8fafc;
+	--sl-color-gray-1: #e6ebf1;
+	--sl-color-gray-2: #c2cbd6;
+	--sl-color-gray-3: #8b97a7;
+	--sl-color-gray-4: #5a6678;
+	--sl-color-gray-5: #2c3746;
+	--sl-color-gray-6: #161e2a;
+	--sl-color-black: #0c1119;
 
-	--ds-ok: #22c55e;
+	--sl-color-bg-nav: color-mix(in oklab, var(--sl-color-black) 82%, transparent);
+	--sl-color-bg-sidebar: var(--sl-color-black);
+	--sl-color-bg-inline-code: color-mix(in oklab, var(--sl-color-gray-5) 55%, transparent);
+	--sl-color-hairline-light: var(--sl-color-gray-5);
+	--sl-color-hairline: color-mix(in oklab, var(--sl-color-gray-5) 70%, var(--sl-color-black));
+
+	--ds-surface: color-mix(in oklab, var(--sl-color-gray-6) 70%, var(--sl-color-black));
+	--ds-surface-raised: var(--sl-color-gray-6);
+	--ds-border: color-mix(in oklab, var(--sl-color-gray-5) 85%, transparent);
+	--ds-border-strong: var(--sl-color-gray-4);
+	--ds-radius: 0.75rem;
+	--ds-radius-sm: 0.5rem;
+	--ds-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -12px rgb(0 0 0 / 0.55);
+
+	--ds-ok: #4ade80;
 	--ds-in: #38bdf8;
 	--ds-out: #a78bfa;
-	--ds-conflict: #f59e0b;
-	--ds-card-border: color-mix(in srgb, var(--sl-color-gray-5) 70%, transparent);
-	--ds-glow: radial-gradient(60% 60% at 50% 0%, color-mix(in srgb, var(--sl-color-accent) 18%, transparent), transparent 70%);
+	--ds-conflict: #fbbf24;
+	--ds-blocked: #fb7185;
+
+	/* Terminals stay dark in both themes. */
+	--ds-term-bg: #0a0f16;
+	--ds-term-bar: #111823;
+	--ds-term-fg: #d5dde6;
+	--ds-term-dim: #7c8898;
+	--ds-term-border: #232e3c;
+	--ds-term-prompt: #2dd4bf;
+
+	--ds-glow: radial-gradient(
+		55% 50% at 50% 0%,
+		color-mix(in oklab, var(--sl-color-accent) 16%, transparent),
+		transparent 75%
+	);
 }
 
+/* ------------------------------------------------------------------ tokens: light */
+
 :root[data-theme='light'] {
-	--sl-color-accent-low: #ccfbf1;
+	--sl-color-accent-low: #d5f5ef;
 	--sl-color-accent: #0f766e;
-	--sl-color-accent-high: #134e4a;
-	--sl-color-white: #0f1520;
-	--sl-color-gray-1: #1c2533;
-	--sl-color-gray-2: #364152;
-	--sl-color-gray-3: #566273;
-	--sl-color-gray-4: #8a97a6;
-	--sl-color-gray-5: #c3ccd6;
+	--sl-color-accent-high: #0b4f4a;
+	--sl-color-white: #0c1119;
+	--sl-color-gray-1: #172030;
+	--sl-color-gray-2: #334155;
+	--sl-color-gray-3: #526073;
+	--sl-color-gray-4: #8b97a7;
+	--sl-color-gray-5: #d5dce4;
 	--sl-color-gray-6: #eef2f6;
 	--sl-color-gray-7: #f6f8fa;
 	--sl-color-black: #ffffff;
+
+	--sl-color-bg-nav: color-mix(in oklab, #ffffff 82%, transparent);
+	--sl-color-bg-sidebar: #fbfcfd;
+	--sl-color-bg-inline-code: var(--sl-color-gray-6);
+	--sl-color-hairline: var(--sl-color-gray-5);
+
+	--ds-surface: var(--sl-color-gray-7);
+	--ds-surface-raised: #ffffff;
+	--ds-border: var(--sl-color-gray-5);
+	--ds-border-strong: var(--sl-color-gray-4);
+	--ds-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 28px -14px rgb(15 23 42 / 0.18);
 
 	--ds-ok: #15803d;
 	--ds-in: #0369a1;
 	--ds-out: #6d28d9;
 	--ds-conflict: #b45309;
+	--ds-blocked: #be123c;
 }
 
-/* Typography polish */
-.sl-markdown-content :is(h2, h3) { letter-spacing: -0.01em; }
-.sl-markdown-content h2 { margin-top: 2.25rem; }
-h1#_top { letter-spacing: -0.025em; }
-.sl-markdown-content :not(pre) > code { font-size: 0.875em; }
-.sl-markdown-content table { font-size: 0.925rem; }
-.sl-markdown-content table code { white-space: nowrap; }
+/* ------------------------------------------------------------------ base */
 
-/* Splash page */
-[data-has-hero] .page { background: var(--ds-glow) no-repeat; background-size: 100% 42rem; }
-.hero .tagline { font-size: clamp(1.1rem, 1rem + 0.6vw, 1.35rem); max-width: 36rem; }
-.hero h1 { font-weight: 750; letter-spacing: -0.035em; }
-
-/* Reusable landing-page building blocks */
-.ds-section { margin-block: 3.5rem; }
-.ds-section:first-of-type { margin-top: 0.5rem; }
-[data-has-hero] .hero { padding-bottom: 1.5rem; }
-.ds-section > h2 { text-align: center; font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem); margin-bottom: 0.5rem; }
-.ds-section > p.ds-lead { text-align: center; color: var(--sl-color-gray-2); max-width: 38rem; margin-inline: auto; }
-
-.ds-matrix {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-	gap: 1rem;
-	margin-top: 1.75rem;
+::selection {
+	background: color-mix(in oklab, var(--sl-color-accent) 32%, transparent);
 }
-.ds-matrix > div {
-	border: 1px solid var(--ds-card-border);
-	border-radius: 0.8rem;
-	padding: 1rem 1.1rem;
-	background: color-mix(in srgb, var(--sl-color-gray-6) 55%, transparent);
-	margin: 0;
-}
-.ds-matrix .ds-when { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sl-color-gray-3); margin: 0; }
-.ds-matrix .ds-then { font-weight: 650; margin: 0.35rem 0 0.25rem; color: var(--sl-color-white); }
-.ds-matrix .ds-why { font-size: 0.9rem; color: var(--sl-color-gray-2); margin: 0; }
-.ds-dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.45rem; vertical-align: 0.05rem; }
 
-.ds-cta {
+body {
+	font-feature-settings: 'cv11', 'ss01';
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+:focus-visible {
+	outline: 2px solid var(--sl-color-accent);
+	outline-offset: 2px;
+}
+
+/* Frosted header */
+header.header {
+	backdrop-filter: saturate(1.4) blur(12px);
+	-webkit-backdrop-filter: saturate(1.4) blur(12px);
+	border-bottom-color: var(--ds-border);
+}
+
+.site-title {
+	font-weight: 650;
+	letter-spacing: -0.02em;
+}
+
+/* ------------------------------------------------------------------ sidebar */
+
+#starlight__sidebar {
+	border-inline-end-color: var(--ds-border);
+}
+
+.sidebar-content .top-level > li > details > summary .group-label > span,
+.sidebar-content .group-label .large {
+	font-size: var(--sl-text-2xs);
+	font-weight: 650;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--sl-color-gray-3);
+}
+
+.sidebar-content a {
+	border-radius: var(--ds-radius-sm);
+	transition: background-color 120ms, color 120ms;
+}
+
+.sidebar-content a:hover:not([aria-current='page']) {
+	background: color-mix(in oklab, var(--sl-color-gray-5) 40%, transparent);
+	color: var(--sl-color-white);
+}
+
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+	background: color-mix(in oklab, var(--sl-color-accent) 14%, transparent);
+	color: var(--sl-color-accent-high);
+	font-weight: 600;
+}
+
+:root[data-theme='light'] .sidebar-content a[aria-current='page'] {
+	color: var(--sl-color-accent-high);
+	background: var(--sl-color-accent-low);
+}
+
+/* ------------------------------------------------------------------ page title & content */
+
+h1#_top {
+	font-weight: 720;
+	letter-spacing: -0.03em;
+	text-wrap: balance;
+}
+
+.sl-markdown-content :is(h2, h3, h4):not(:where(.not-content *)) {
+	letter-spacing: -0.015em;
+	text-wrap: balance;
+	color: var(--sl-color-white);
+}
+
+.sl-markdown-content h2:not(:where(.not-content *)) {
+	margin-top: 2.75rem;
+	padding-top: 1.25rem;
+	border-top: 1px solid var(--ds-border);
+	font-weight: 680;
+}
+
+.sl-markdown-content > h2:first-child,
+.sl-markdown-content > .sl-heading-wrapper.level-h2:first-child {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: 0;
+}
+
+/* Heading wrappers from Starlight's anchor links carry the border instead of the heading */
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
+	margin-top: 2.75rem;
+	padding-top: 1.25rem;
+	border-top: 1px solid var(--ds-border);
+}
+
+.sl-markdown-content .sl-heading-wrapper.level-h2 h2 {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: 0;
+}
+
+.sl-markdown-content h3:not(:where(.not-content *)) {
+	margin-top: 2rem;
+	font-weight: 650;
+}
+
+.sl-markdown-content :is(p, li, dd) {
+	text-wrap: pretty;
+}
+
+.sl-markdown-content strong {
+	color: var(--sl-color-white);
+	font-weight: 620;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.2em;
+	text-decoration-color: color-mix(in oklab, currentColor 45%, transparent);
+	transition: text-decoration-color 120ms;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+	text-decoration-color: currentColor;
+}
+
+.sl-markdown-content :not(pre) > code:not(:where(.not-content *)) {
+	font-size: 0.86em;
+	padding: 0.12em 0.36em;
+	border-radius: 0.35em;
+	border: 1px solid color-mix(in oklab, var(--sl-color-gray-5) 60%, transparent);
+	overflow-wrap: anywhere;
+}
+
+.sl-markdown-content kbd {
+	font-family: var(--sl-font-mono);
+	font-size: 0.8em;
+	padding: 0.1em 0.4em;
+	border: 1px solid var(--ds-border-strong);
+	border-bottom-width: 2px;
+	border-radius: 0.3em;
+}
+
+/* Lead paragraph: the first paragraph on a page reads as its summary */
+.sl-markdown-content > p:first-child {
+	font-size: 1.075rem;
+	color: var(--sl-color-gray-1);
+}
+
+/* ------------------------------------------------------------------ tables */
+
+.sl-markdown-content table:not(:where(.not-content *)) {
+	display: block;
+	overflow-x: auto;
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius);
+	border-collapse: separate;
+	border-spacing: 0;
+	font-size: 0.9rem;
+	line-height: 1.55;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) :is(th, td) {
+	border: 0;
+	border-bottom: 1px solid var(--ds-border);
+	padding: 0.6rem 0.9rem;
+	vertical-align: top;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) tr:last-child td {
+	border-bottom: 0;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) th {
+	background: var(--ds-surface);
+	color: var(--sl-color-white);
+	font-weight: 620;
+	font-size: 0.82rem;
+	text-wrap: balance;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) td:first-child code {
+	white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ asides, code, steps */
+
+.starlight-aside {
+	border-radius: var(--ds-radius-sm);
+	border-inline-start-width: 3px;
+}
+
+.expressive-code .frame {
+	box-shadow: var(--ds-shadow);
+}
+
+.sl-steps > li::before {
+	font-weight: 650;
+}
+
+/* Cards & link cards */
+.card,
+.sl-link-card {
+	border-radius: var(--ds-radius);
+	border-color: var(--ds-border);
+	background: var(--ds-surface);
+	transition: border-color 150ms, background-color 150ms;
+}
+
+.sl-link-card:hover {
+	border-color: var(--sl-color-accent);
+	background: color-mix(in oklab, var(--sl-color-accent) 6%, var(--ds-surface));
+}
+
+/* Pagination */
+.pagination-links a {
+	border-radius: var(--ds-radius);
+	border-color: var(--ds-border);
+	box-shadow: none;
+}
+
+.pagination-links a:hover {
+	border-color: var(--sl-color-accent);
+}
+
+/* ------------------------------------------------------------------ splash (home) */
+
+[data-has-hero] .page {
+	background: var(--ds-glow) no-repeat;
+	background-size: 100% 46rem;
+}
+
+[data-has-hero] .content-panel {
+	border-top: 0;
+}
+
+/* ------------------------------------------------------------------ shared building blocks */
+
+.ds-eyebrow {
+	display: block;
+	font-size: var(--sl-text-2xs);
+	font-weight: 650;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--sl-color-accent);
+}
+
+.ds-section {
+	margin-block: 5rem;
+}
+
+.ds-section > header {
+	max-width: 40rem;
+	margin: 0 auto 2rem;
 	text-align: center;
-	border: 1px solid var(--ds-card-border);
-	border-radius: 1rem;
-	padding: 2rem 1.25rem;
-	background: var(--ds-glow), color-mix(in srgb, var(--sl-color-gray-6) 50%, transparent);
 }
-.ds-cta p { color: var(--sl-color-gray-2); }
 
-@media (prefers-reduced-motion: no-preference) {
-	.ds-matrix > div { transition: transform 160ms ease, border-color 160ms ease; }
-	.ds-matrix > div:hover { transform: translateY(-2px); border-color: var(--sl-color-accent); }
+.sl-markdown-content .ds-section > header h2 {
+	margin: 0.4rem 0 0.6rem;
+	padding-top: 0;
+	border-top: 0;
+	font-size: clamp(1.6rem, 1.25rem + 1.2vw, 2.15rem);
+	font-weight: 720;
+	letter-spacing: -0.03em;
+	line-height: 1.15;
+	text-wrap: balance;
+	color: var(--sl-color-white);
+}
+
+.ds-section > header p {
+	margin: 0;
+	color: var(--sl-color-gray-2);
+	font-size: 1.05rem;
+	text-wrap: pretty;
+}
+
+/* Status colours as text */
+.ds-c-ok { color: var(--ds-ok); }
+.ds-c-in { color: var(--ds-in); }
+.ds-c-out { color: var(--ds-out); }
+.ds-c-conflict { color: var(--ds-conflict); }
+.ds-c-blocked { color: var(--ds-blocked); }
+
+@media (forced-colors: active) {
+	.sl-markdown-content :not(pre) > code,
+	.card,
+	.sl-link-card {
+		border: 1px solid CanvasText;
+	}
+}
+
+/* A single follow-up link under a home page section */
+.ds-more {
+	margin-top: 1.5rem;
+	text-align: center;
+	font-weight: 600;
+	font-size: 0.95rem;
+}
+
+.ds-more a {
+	text-decoration: none;
+}
+
+.ds-more a:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+/* Two-column "good fit / look elsewhere" block */
+.ds-fit {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+	gap: 1rem;
+}
+
+.ds-fit > div {
+	padding: 1.3rem 1.5rem 0.6rem;
+	border: 1px solid var(--ds-border);
+	border-radius: var(--ds-radius);
+	background: var(--ds-surface);
+}
+
+.ds-fit > div:first-child {
+	border-top: 3px solid var(--ds-ok);
+}
+
+.ds-fit > div:last-child {
+	border-top: 3px solid var(--ds-border-strong);
+}
+
+.sl-markdown-content .ds-fit h3 {
+	margin: 0 0 0.5rem;
+	font-size: 1rem;
+}
+
+.sl-markdown-content .ds-fit ul {
+	padding-inline-start: 1.1rem;
 }

@@ -1,65 +1,68 @@
 ---
 title: Verifying releases
-description: Check that a dotsync binary is exactly what the project's release workflow built, using checksums and signed build provenance.
+description: Check that a dotsync binary is exactly what the project's release workflow built, with signed build provenance or a checksum, and how to reproduce a build.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-Every release is built from a tagged commit by GitHub Actions. Nobody builds or uploads release binaries by hand. Each release publishes:
+Every release is built from a tagged commit by GitHub Actions; nobody builds or uploads release binaries by hand. Each release publishes:
 
-| Artifact | Purpose |
+| Artifact | What it's for |
 |---|---|
-| `dotsync_<version>_<os>_<arch>.tar.gz` | the binary, plus `LICENSE`, `README.md` and `CHANGELOG.md` |
-| `checksums.txt` | SHA-256 of every archive |
-| `*.sbom.json` | a software bill of materials (SPDX) for each archive |
-| build provenance attestation | a signed [SLSA provenance](https://slsa.dev/provenance) statement tying each archive to the workflow run, commit and repository that built it. It's stored with GitHub and also attached to the release as `dotsync_<version>.intoto.jsonl` |
+| `dotsync_<version>_<os>_<arch>.tar.gz` | the binary, with `LICENSE`, `README.md` and `CHANGELOG.md`. `<os>` is `darwin` or `linux`, `<arch>` is `amd64` or `arm64` |
+| `checksums.txt` | the SHA-256 of every archive |
+| `dotsync_<version>_<os>_<arch>.tar.gz.sbom.json` | a software bill of materials for each archive |
+| `dotsync_<version>.intoto.jsonl` | the signed [SLSA build provenance](https://slsa.dev/provenance) for every archive, also stored with GitHub. It ties each archive to the workflow run, commit and repository that built it |
 
-Attestations are signed through Sigstore with the release workflow's own short-lived identity. There's no long-lived signing key that could leak.
+The provenance is signed through Sigstore with the release workflow's own short-lived identity. There's no long-lived signing key that could leak.
 
-## Verify provenance (recommended)
+<Aside type="tip">
+The install script and `dotsync update` check the checksum every time, and the provenance whenever the GitHub CLI is installed and logged in. Set `DOTSYNC_REQUIRE_ATTESTATION=1` for the script, or pass `--require-attestation` to `update`, to make the provenance check mandatory.
+</Aside>
+
+## Verify the provenance
+
+This is the check that matters: it proves the file was built by this repository's release workflow, from a commit in this repository.
 
 <Steps>
 
-1. Install the [GitHub CLI](https://cli.github.com) 2.49 or newer.
+1. Install the [GitHub CLI](https://cli.github.com), version 2.49 or newer, and log in with `gh auth login`.
 2. Verify the archive you downloaded:
 
-   ```console frame="terminal"
-   $ gh attestation verify dotsync_0.1.0_darwin_arm64.tar.gz --repo pungoyal/dotsync
-   ✓ Verification succeeded!
+   ```sh
+   gh attestation verify dotsync_0.5.0_darwin_arm64.tar.gz --repo pungoyal/dotsync
    ```
+
+   It ends with `✓ Verification succeeded!`, and exits with status `0`.
 
 </Steps>
 
-This proves the file was built by this repository's release workflow from a commit in this repository. To see exactly which workflow run and commit:
+To see exactly which workflow run and commit built it:
 
 ```sh
-gh attestation verify dotsync_0.1.0_darwin_arm64.tar.gz --repo pungoyal/dotsync --format json \
+gh attestation verify dotsync_0.5.0_darwin_arm64.tar.gz --repo pungoyal/dotsync --format json \
   | jq '.[0].verificationResult.signature.certificate | {sourceRepositoryRef, sourceRepositoryDigest, runInvocationURI}'
 ```
 
-<Aside type="tip">
-The install script runs this check automatically when `gh` is available. Set `DOTSYNC_REQUIRE_ATTESTATION=1` to make it mandatory.
-</Aside>
+### Against the attached bundle
 
-### Offline, or without trusting the GitHub API
-
-The same signed bundle is attached to every release, so you can verify against the file itself:
+The same signed provenance is attached to every release, so you can verify against the file instead of fetching it from GitHub's attestation API:
 
 ```sh
-gh attestation verify dotsync_0.1.0_darwin_arm64.tar.gz \
-  --bundle dotsync_0.1.0.intoto.jsonl --repo pungoyal/dotsync
+gh attestation verify dotsync_0.5.0_darwin_arm64.tar.gz \
+  --bundle dotsync_0.5.0.intoto.jsonl --repo pungoyal/dotsync
 ```
 
 ## Verify the checksum
 
 ```sh
-curl -fsSLO https://github.com/pungoyal/dotsync/releases/download/v0.1.0/checksums.txt
+curl -fsSLO https://github.com/pungoyal/dotsync/releases/download/v0.5.0/checksums.txt
 shasum -a 256 --check --ignore-missing checksums.txt   # macOS
 sha256sum --check --ignore-missing checksums.txt       # Linux
 ```
 
-A checksum only proves the download wasn't corrupted in transit: someone who can replace the archive can replace `checksums.txt` too. The attestation proves where the file came from.
+A checksum only proves the download wasn't corrupted on the way. Someone who can replace the archive can replace `checksums.txt` too; only the provenance proves where the file came from.
 
-## Reproducible builds
+## Reproduce a build
 
-Release binaries are built with `CGO_ENABLED=0` and `-trimpath`, with timestamps taken from the commit rather than the build machine. With the same Go version (`go version -m dotsync` shows it), building the tagged commit reproduces the binaries.
+Release binaries are built by [GoReleaser](https://goreleaser.com) with `CGO_ENABLED=0` and `-trimpath`, stripped, and with the version, commit and commit date set at link time; file timestamps come from the commit, not the build machine. Building the tagged commit the same way, with the same Go version, reproduces the binary. `go version -m dotsync` shows the Go version and build settings of any binary.

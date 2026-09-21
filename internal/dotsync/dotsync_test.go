@@ -1376,3 +1376,81 @@ func TestCommandTable(t *testing.T) {
 		t.Errorf("unknown command: exit %d, %q", code, errOut.String())
 	}
 }
+
+func TestInitMentionsBackupsOnlyWhenItReplacedFiles(t *testing.T) {
+	w := newWorld(t)
+	a, b, c := w.machine("alpha"), w.machine("beta"), w.machine("gamma")
+	a.init()
+	a.write(".bashrc", "shared\n")
+	a.ok("add", a.path(".bashrc"))
+
+	const note = "existing local files that were replaced"
+	if out := b.init(); strings.Contains(out, note) {
+		t.Fatalf("nothing was replaced, but init said so:\n%s", out)
+	}
+	c.write(".bashrc", "gamma's own\n")
+	if out := c.init(); !strings.Contains(out, note) {
+		t.Fatalf("a file was replaced, but init didn't say where the backup is:\n%s", out)
+	}
+}
+
+func TestSameTargetOnDifferentOperatingSystems(t *testing.T) {
+	w := newWorld(t)
+	a := w.machine("alpha")
+	a.init()
+	other := "darwin"
+	if osName() == "darwin" {
+		other = "linux"
+	}
+	a.write(".config/term.toml", "for this OS\n")
+	a.ok("add", a.path(".config/term.toml"), "-source", "term/other.toml", "-os", other)
+	a.ok("add", a.path(".config/term.toml"), "-source", "term/here.toml", "-os", osName())
+	if got := w.remoteFile("term/here.toml"); got != "for this OS\n" {
+		t.Fatalf("this OS's entry holds %q", got)
+	}
+	v := a.statusJSON()
+	if s := entryStatusOf(v, "term/other.toml"); s != "skipped" {
+		t.Fatalf("other OS's entry: %q", s)
+	}
+	if s := entryStatusOf(v, "term/here.toml"); s != "ok" {
+		t.Fatalf("this OS's entry: %q", s)
+	}
+	// A path names the entry for this OS.
+	a.ok("describe", a.path(".config/term.toml"), "mine")
+	if m := w.remoteManifest(); !strings.Contains(m, `"source": "term/here.toml",
+      "target": "~/.config/term.toml",
+      "description": "mine"`) {
+		t.Fatalf("describe changed the wrong entry:\n%s", m)
+	}
+	// Entries whose OS lists overlap still can't share a target.
+	if code, out := a.run("add", a.path(".config/term.toml"), "-source", "term/all.toml"); code == 0 {
+		t.Fatalf("an entry for every OS was allowed to share a target:\n%s", out)
+	}
+}
+
+func TestLastLineSkipsGitBoilerplate(t *testing.T) {
+	stderr := "ssh: Could not resolve hostname github.invalid: Name or service not known\r\n" +
+		"fatal: Could not read from remote repository.\n\n" +
+		"Please make sure you have the correct access rights\nand the repository exists.\n"
+	if got := lastLine(stderr); got != "ssh: Could not resolve hostname github.invalid: Name or service not known" {
+		t.Fatalf("lastLine = %q", got)
+	}
+	if got := lastLine("and the repository exists.\n"); got != "and the repository exists." {
+		t.Fatalf("lastLine of only boilerplate = %q", got)
+	}
+	if got := lastLine("  \n"); got != "unknown error" {
+		t.Fatalf("lastLine of nothing = %q", got)
+	}
+}
+
+func TestNotificationsSetting(t *testing.T) {
+	off, on := false, true
+	for _, tc := range []struct {
+		c    *Config
+		want bool
+	}{{nil, true}, {&Config{}, true}, {&Config{Notifications: &on}, true}, {&Config{Notifications: &off}, false}} {
+		if got := tc.c.notificationsOn(); got != tc.want {
+			t.Fatalf("notificationsOn(%+v) = %v", tc.c, got)
+		}
+	}
+}

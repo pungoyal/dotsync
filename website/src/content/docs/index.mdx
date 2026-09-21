@@ -1,116 +1,18 @@
 ---
 title: Your dotfiles, the same everywhere.
-description: dotsync keeps dotfiles in sync across macOS and Linux automatically. It backs up before it replaces anything, detects conflicts per file, and keeps secrets off the remote.
+description: dotsync keeps dotfiles in sync across your Macs and Linux machines, automatically and in both directions. It backs up every file before replacing it, turns concurrent edits into conflicts you settle, and keeps secrets off the remote.
 template: splash
 hero:
-  tagline: dotsync keeps your configuration files in sync across every Mac and Linux machine you use, automatically. It never silently overwrites a change.
-  image:
-    dark: ../../assets/hero-dark.svg
-    light: ../../assets/hero-light.svg
-  actions:
-    - text: Get started
-      link: /dotsync/start/quick-start/
-      icon: right-arrow
-    - text: How it works
-      link: /dotsync/concepts/how-sync-works/
-      variant: secondary
-    - text: View on GitHub
-      link: https://github.com/pungoyal/dotsync
-      icon: github
-      variant: minimal
+  tagline: Edit a config file on any of your Macs or Linux machines, and within minutes every other machine has it. When two machines change the same file, dotsync keeps both versions and asks you which to keep.
 ---
 
-import { Card, CardGrid, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+import Terminal from '../../components/Terminal.astro';
+import OutcomeGrid from '../../components/OutcomeGrid.astro';
+import Features from '../../components/Features.astro';
 
-<section class="ds-section" aria-labelledby="install">
-<h2 id="install">Install in one line</h2>
-<p class="ds-lead">A single static binary. The only thing it needs is <code>git</code>.</p>
-
-<Tabs syncKey="install">
-<TabItem label="Install script" icon="seti:shell">
-```sh
-curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh
-```
-The script checks the checksum and, if the GitHub CLI is installed, the [signed build provenance](/dotsync/project/verifying-releases/) before it installs anything.
-</TabItem>
-<TabItem label="Go" icon="seti:go">
-```sh
-go install github.com/pungoyal/dotsync/cmd/dotsync@latest
-```
-</TabItem>
-<TabItem label="Binary" icon="download">
-Download an archive for macOS or Linux (amd64 or arm64) from the [releases page](https://github.com/pungoyal/dotsync/releases/latest), then put `dotsync` on your `PATH`.
-</TabItem>
-</Tabs>
-
-```sh title="Then, on every machine"
-dotsync init git@github.com:you/dotfiles.git
-dotsync add ~/.gitconfig ~/.config/fish ~/.config/nvim   # once, from any machine
-dotsync doctor                                           # check everything is healthy
-```
-
-Upgrade any time with `dotsync update`. It checks the same checksum and provenance.
-</section>
-
-<section class="ds-section" aria-labelledby="why">
-<h2 id="why">Set it up once. Then forget about it.</h2>
-<p class="ds-lead">Most dotfile managers are deployment tools. dotsync is a synchronizer: edit the real file wherever you are, and it shows up everywhere else.</p>
-
-<CardGrid>
-	<Card title="Automatic, both ways" icon="random">
-		Edit `~/.gitconfig` on your laptop and your desktop has it a few minutes later. Adding and removing managed files works from any machine too.
-	</Card>
-	<Card title="Never loses your work" icon="approve-check">
-		Every file is backed up before it's replaced. If two machines change the same file, both versions are kept and you choose.
-	</Card>
-	<Card title="Secrets stay home" icon="warning">
-		SSH keys, cloud credentials and tokens in your shell config are held back before they ever reach the remote.
-	</Card>
-	<Card title="Offline is fine" icon="laptop">
-		A machine that was away for a month catches up correctly, including noticing conflicts, when it reconnects.
-	</Card>
-	<Card title="Nothing new to host" icon="github">
-		Your dotfiles live in a private git repository you already know how to host. There's no server, account or daemon.
-	</Card>
-	<Card title="Portable by design" icon="puzzle">
-		`~/…` and `$XDG_CONFIG_HOME/…` targets, per-OS entries and per-machine exclusions keep the shared manifest free of machine-specific paths.
-	</Card>
-</CardGrid>
-</section>
-
-<section class="ds-section" aria-labelledby="decides">
-<h2 id="decides">One simple rule, applied to every file</h2>
-<p class="ds-lead">Each machine remembers the version it last agreed on with everyone else, so dotsync always knows who changed what.</p>
-
-<div class="ds-matrix">
-	<div>
-		<p class="ds-when">Changed only on another machine</p>
-		<p class="ds-then"><span class="ds-dot" style="background: var(--ds-in)"></span>Installed here</p>
-		<p class="ds-why">after backing up this machine's copy</p>
-	</div>
-	<div>
-		<p class="ds-when">Changed only on this machine</p>
-		<p class="ds-then"><span class="ds-dot" style="background: var(--ds-out)"></span>Sent everywhere</p>
-		<p class="ds-why">pushed to the shared repository</p>
-	</div>
-	<div>
-		<p class="ds-when">Changed on both</p>
-		<p class="ds-then"><span class="ds-dot" style="background: var(--ds-conflict)"></span>Conflict</p>
-		<p class="ds-why">nothing is touched; you decide with one command</p>
-	</div>
-	<div>
-		<p class="ds-when">Unchanged</p>
-		<p class="ds-then"><span class="ds-dot" style="background: var(--ds-ok)"></span>Nothing to do</p>
-		<p class="ds-why">no merges, no heuristics, no surprises</p>
-	</div>
-</div>
-</section>
-
-<section class="ds-section" aria-labelledby="status">
-<h2 id="status">Always know where you stand</h2>
-<p class="ds-lead"><code>dotsync status</code> shows every managed file, its state on this machine, and anything that needs your attention.</p>
-
-```console frame="terminal" title="dotsync status"
+export const status = `
+$ dotsync status
 dotsync on laptop: git@github.com:you/dotfiles.git (main @ 1c049fe)
 last sync: 2026-09-21T11:16:09+05:30 (ok)
 automatic sync: launchd agent loaded
@@ -119,26 +21,100 @@ SOURCE            TARGET                      STATUS      DESCRIPTION
 fish/config.fish  ~/.config/fish/config.fish  ok          Fish shell configuration
 gitconfig         ~/.gitconfig                CONFLICT    Git identity and aliases
 nvim              ~/.config/nvim/             1 incoming  Neovim
+                                              - ~/.config/nvim/init.lua: download
 
 conflicts (neither version has been changed):
   ~/.gitconfig  since 2026-09-21T11:16:09+05:30
   inspect: dotsync diff <path>    settle: dotsync resolve <path> --keep local|remote
-```
+  (to merge by hand, edit the local file, then --keep local)
+`;
+
+<section class="ds-section" aria-labelledby="setup">
+<header>
+<span class="ds-eyebrow">Set up once</span>
+<h2 id="setup">Three commands, then you forget about it</h2>
+<p>Connect each machine to a private git repository, choose your files once from any machine, and go back to editing them as usual.</p>
+</header>
+
+<Terminal
+	title="on each machine"
+	code={`
+$ dotsync init git@github.com:you/dotfiles.git      # clone, first sync, start the background agent
+$ dotsync add ~/.gitconfig ~/.config/fish ~/.config/nvim   # once, from any machine
+$ dotsync doctor                                    # check git access, the agent and every file
+`}
+/>
+</section>
+
+<section class="ds-section" aria-labelledby="rule">
+<header>
+<span class="ds-eyebrow">The model</span>
+<h2 id="rule">One rule decides what happens to every file</h2>
+<p>For each file, every machine remembers the version it last agreed on with the others. Comparing against that version shows who changed the file, so there's always exactly one right move.</p>
+</header>
+
+<OutcomeGrid />
+
+<p class="ds-more"><a href="/dotsync/concepts/how-sync-works/">See deletions, first syncs and every edge case, with an interactive explorer →</a></p>
+</section>
+
+<section class="ds-section" aria-labelledby="why">
+<header>
+<span class="ds-eyebrow">Why dotsync</span>
+<h2 id="why">Careful by design</h2>
+<p>Most dotfile managers are deployment tools: you edit a source copy, then apply it everywhere. dotsync is a synchronizer: you edit the real file, and it takes care of the rest.</p>
+</header>
+
+<Features />
+</section>
+
+<section class="ds-section" aria-labelledby="status">
+<header>
+<span class="ds-eyebrow">Visibility</span>
+<h2 id="status">Always know where you stand</h2>
+<p><code>dotsync status</code> shows every managed file, what's about to change on this machine, and anything that needs you.</p>
+</header>
+
+<Terminal title="laptop" code={status} />
+</section>
+
+<section class="ds-section" aria-labelledby="fit">
+<header>
+<span class="ds-eyebrow">Honest fit</span>
+<h2 id="fit">Is it the right tool for you?</h2>
+</header>
+
+<div class="ds-fit">
+<div>
+<h3>A good fit if you</h3>
+
+- use two or more Macs or Linux machines
+- want your configuration to simply *be the same* on all of them
+- would rather never run a command to keep them in sync
+
+</div>
+<div>
+<h3>Look elsewhere if you need</h3>
+
+- **templates**, where one file renders differently per machine. [chezmoi](https://www.chezmoi.io/) is excellent at that; dotsync has [per-OS entries and per-machine exclusions](/dotsync/guides/differences/) instead
+- **Windows** support
+- **instant** sync. dotsync syncs every few minutes, by design
+
+</div>
+</div>
+
+<p class="ds-more"><a href="/dotsync/concepts/comparison/">Compare dotsync with chezmoi, yadm, GNU Stow and Mackup →</a></p>
 </section>
 
 <section class="ds-section" aria-labelledby="next">
+<header>
 <h2 id="next">Where to next</h2>
+</header>
 
 <CardGrid>
 	<LinkCard title="Quick start" description="Two machines in sync in five minutes." href="/dotsync/start/quick-start/" />
-	<LinkCard title="How sync works" description="The model, with an interactive explorer." href="/dotsync/concepts/how-sync-works/" />
-	<LinkCard title="Safety guarantees" description="What dotsync promises, and how it keeps those promises." href="/dotsync/concepts/safety/" />
-	<LinkCard title="Compare with chezmoi, yadm and Stow" description="When dotsync is the right tool, and when it isn't." href="/dotsync/concepts/comparison/" />
+	<LinkCard title="How sync works" description="The model behind every decision, with an interactive explorer." href="/dotsync/concepts/how-sync-works/" />
+	<LinkCard title="Safety guarantees" description="What dotsync promises about your files, and how it keeps each promise." href="/dotsync/concepts/safety/" />
+	<LinkCard title="Command reference" description="Every command and flag, generated from the source." href="/dotsync/reference/commands/" />
 </CardGrid>
 </section>
-
-<div class="ds-cta">
-	<h2>Stop copying dotfiles around.</h2>
-	<p>Free and open source under the MIT license.</p>
-	<p><a href="/dotsync/start/quick-start/"><strong>Get started →</strong></a></p>
-</div>

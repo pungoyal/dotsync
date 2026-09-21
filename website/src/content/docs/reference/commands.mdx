@@ -1,243 +1,249 @@
 ---
 title: Commands
-description: Every dotsync command and flag.
+description: Every dotsync command and flag, with what each one does. The usage lines and flag tables are generated from dotsync's source.
 tableOfContents:
   maxHeadingLevel: 2
 ---
+
+import { Aside } from '@astrojs/starlight/components';
+import CommandIndex from '../../../components/CommandIndex.astro';
+import CommandSynopsis from '../../../components/CommandSynopsis.astro';
+import CommandFlags from '../../../components/CommandFlags.astro';
+import Terminal from '../../../components/Terminal.astro';
+
+export const doctorOut = `
+$ dotsync doctor
+dotsync doctor
+  ✓ dotsync 0.5.0 (ed63c37, 2026-09-21T06:18:53Z) go1.27.1 darwin/arm64
+  · update available: 0.5.0 → 0.6.0
+      → dotsync update
+  ✓ git version 2.50.1 (Apple Git-155)
+  ✓ configuration: ~/.config/dotsync/config.json
+      remote git@github.com:you/dotfiles.git, branch main
+  ✓ remote reachable without prompts
+  ✓ background agent: launchd agent loaded
+  ✓ last sync 3m0s ago (ok)
+  ✓ 12 managed entries, 148 files
+  ! 1 conflict(s)
+      → dotsync status; then dotsync resolve <path> --keep local|remote
+  · backups: 6 file(s), 41.2 KiB in ~/.local/state/dotsync/backups (older than 90 days are pruned)
+
+Working, with warnings.
+`;
+
+export const updateOut = `
+$ dotsync update
+downloading dotsync 0.6.0 (darwin/arm64)
+checksum verified
+build provenance verified (built by pungoyal/dotsync's release workflow)
+installed ~/.local/bin/dotsync
+dotsync 0.5.0 → 0.6.0
+background agent refreshed: launchd agent io.github.dotsync, every 300s
+`;
+
+export const listOut = `
+$ dotsync list
+gitconfig  ->  ~/.gitconfig
+    Git identity and aliases
+karabiner/karabiner.json  ->  ~/.config/karabiner/karabiner.json  [[darwin]]
+    Keyboard remapping
+nvim  ->  ~/.config/nvim
+    Neovim
+`;
 
 ```text
 dotsync <command> [flags] [arguments]
 ```
 
-- Flags can come before or after arguments. `-flag` and `--flag` both work, and `--` ends flag parsing.
-- Every command accepts `-h` for its own help; `dotsync help <command>` does the same.
-- `add`, `remove`, `set`, `describe`, `exclude`, `include` and `resolve` run a sync straight away, so you see the result immediately.
+- Flags can come before, between or after arguments. `-flag` and `--flag` are the same, and a value can follow a space or an `=`: `--interval 600` or `--interval=600`. `--` ends flag parsing.
+- `dotsync help <command>`, or `-h` after any command, prints its usage and flags.
+- Every command that changes something (`add`, `remove`, `set`, `describe`, `exclude`, `include` and `resolve`) runs a sync straight away, so you see the result immediately.
+- A command that needs the lock waits up to a minute for a running sync to finish.
 
-| Command | Alias | Purpose |
-|---|---|---|
-| [`init`](#init) | | set up this machine |
-| [`doctor`](#doctor) | | check the setup and explain how to fix problems |
-| [`update`](#update) | | install the latest release, verified |
-| [`add`](#add) | | start managing files or directories, on every machine |
-| [`remove`](#remove) | `rm` | stop managing entries, on every machine |
-| [`set`](#set) | | change an entry's ignore patterns, OS, permissions, write strategy or description |
-| [`describe`](#describe) | | change an entry's description |
-| [`exclude`](#exclude-and-include) / [`include`](#exclude-and-include) | | stop / resume managing an entry on this machine only |
-| [`sync`](#sync) | | synchronize now |
-| [`status`](#status) | `st` | managed files and their state on this machine |
-| [`list`](#list) | `ls` | the shared manifest |
-| [`diff`](#diff) | | differences between this machine and the remote |
-| [`resolve`](#resolve) | | settle conflicts |
-| [`log`](#log) | | history of the shared repository |
-| [`agent`](#agent) | | manage the background agent |
-| [`version`](#version) | | version and build information |
+<CommandIndex />
+
+<Aside>
+The usage lines and flag tables on this page are generated from dotsync's source, so they always match `dotsync help`.
+</Aside>
 
 ## init
 
-```text
-dotsync init [flags] <git-url>
-```
+<CommandSynopsis name="init" />
 
-Sets up this machine. It clones the repository, creates the manifest if the repository is empty, writes the [machine configuration](/dotsync/reference/configuration/), copies the binary to `~/.local/bin`, runs the first sync, and installs the [background agent](/dotsync/guides/background-agent/). Safe to run again.
+Sets up this machine. It clones the repository into `~/.local/share/dotsync/repo` and, if the repository is empty, creates the manifest there and pushes it. Then it writes the [machine configuration](/dotsync/reference/configuration/), copies the running binary to `~/.local/bin/dotsync`, runs the first sync, and installs the [background agent](/dotsync/guides/background-agent/).
 
-| Flag | Description |
-|---|---|
-| `--keep-existing` | report existing, differing local files as conflicts instead of backing them up and replacing them |
-| `--branch <name>` | branch to sync (default `main`) |
-| `--interval <seconds>` | background sync interval (default `300`) |
-| `--no-agent` | don't install the background agent |
-| `--no-install` | don't copy the binary to `~/.local/bin` |
+`init` is safe to run again, for example to re-install the agent or to change the branch or interval. Flags you don't pass keep their saved values. A machine can only sync with one repository; to [switch](/dotsync/project/faq/#how-do-i-move-to-a-different-remote), change the remote first.
+
+<CommandFlags name="init" />
+
+With `--keep-existing`, existing local files that differ from the shared version become [conflicts](/dotsync/guides/resolve-conflicts/) instead of being backed up and replaced. It's saved as [`on_existing`](/dotsync/reference/configuration/), so it also applies to entries added later. See [Add another machine](/dotsync/guides/add-a-machine/#files-the-machine-already-has).
 
 ## doctor
 
-```text
-dotsync doctor
-```
+<CommandSynopsis name="doctor" />
 
-Checks everything dotsync depends on:
+Checks everything dotsync depends on, in order, and says how to fix what's wrong:
 
-- the git version
-- the configuration and cache clone
-- that the remote is reachable **without prompts**, exactly as the background agent will reach it
-- the agent, whether its definition is current, and whether `dotsync` is on your `PATH`
-- how long ago the last sync ran
-- conflicts, blocked files and errors
-- whether this machine has an age key, when managed files are age-encrypted or sops files encrypted to age recipients
-- backup usage
+- this version, and whether a newer release exists
+- that `git` is installed, and version 2.20 or newer
+- the configuration, and that the cache clone exists and points at the configured remote
+- that the remote is reachable **without prompts**, exactly as the background agent will reach it, and has the configured branch
+- that the agent is installed and loaded, that the binary it runs exists, and that its definition is current
+- that `dotsync` is on your `PATH`
+- when the last sync ran, and whether it reached the remote
+- conflicts, blocked files, errors and queued changes, judged against the last fetched state
+- how many backups there are, and how much space they use
 
-Each problem comes with a `→` line saying how to fix it.
+<Terminal code={doctorOut} />
 
-```console frame="terminal"
-$ dotsync doctor
-dotsync doctor
-  ✓ dotsync 0.2.0 (…) go1.27.1 darwin/arm64
-  ✓ git version 2.54.0
-  ✓ configuration: ~/.config/dotsync/config.json
-  ✗ remote rejects authentication
-      git@github.com: Permission denied (publickey).
-      → make `git ls-remote git@github.com:you/dotfiles.git` work without a prompt: …
-  ✓ background agent: launchd agent loaded
-  ✓ 12 managed entries, 148 files
-  · backups: 6 file(s), 41.2 KiB in ~/.local/state/dotsync/backups (older than 90 days are pruned)
-```
-
-Exits `1` if any check fails (`✗`); warnings (`!`) don't change the exit status.
+Each line starts with `✓` (fine), `·` (information), `!` (a warning) or `✗` (a failure), and problems come with a `→` line saying what to do. `doctor` exits with status `1` if any check failed; warnings don't change the exit status. It never changes your files, the repository or the agent.
 
 ## update
 
-```text
-dotsync update [--check] [--version vX.Y.Z] [--require-attestation]
-```
+<CommandSynopsis name="update" />
 
-Replaces the running binary with the latest release, applying the same checks as the install script. It verifies the **SHA-256 checksum**, plus the **signed build provenance** when the GitHub CLI is available, before replacing anything. The binary is swapped atomically. If the background agent runs a different copy (`~/.local/bin/dotsync`), that copy is updated too. The agent's definition (schedule, priority, environment) is then re-installed with the new version, so the next scheduled sync already runs the new version with its current settings.
+Replaces this binary with the latest release, after the same checks as the install script: the **SHA-256 checksum** always, and the **signed build provenance** when the GitHub CLI is installed. If the background agent runs a different copy (`~/.local/bin/dotsync`), that copy is replaced too, and the agent is then re-installed so its next run uses the new version with matching settings.
 
-| Flag | Description |
-|---|---|
-| `--check` | only report whether a newer release exists |
-| `--version vX.Y.Z` | install a specific release instead of the latest, including an older one |
-| `--require-attestation` | refuse to update unless the build provenance verifies |
+<CommandFlags name="update" />
 
-`dotsync doctor` also mentions when an update is available. Development builds (`make build`) only update with an explicit `--version`.
+<Terminal code={updateOut} />
+
+Binaries are replaced atomically, and nothing is replaced if a check fails. A development build, one without a release version, is only replaced when you pass `--version`. `update` looks up the latest release through the GitHub API; set `GITHUB_TOKEN` if you hit its rate limit.
 
 ## add
 
-```text
-dotsync add [flags] <path>...
-```
+<CommandSynopsis name="add" />
 
-Starts managing files or directories on every machine. Paths must be inside `$HOME`. Files that look like secrets are refused. For directories, `add` reports how many files will be held back as secrets.
+Starts managing files or directories, **on every machine**. Paths must be inside your home directory. A file that looks like a secret is refused; for a directory, `add` tells you how many files will be held back instead. See [Manage files and directories](/dotsync/guides/manage-files/) for how sources are chosen and what can't be added.
 
-| Flag | Description |
-|---|---|
-| `-d`, `--description <text>` | description (single path only; defaults to the file name) |
-| `--source <path>` | location under `files/` in the repository (single path only). The default is derived from the path: `~/.config/fish/config.fish` becomes `fish/config.fish` |
-| `--ignore <glob>` | directories: a pattern not to sync. Repeatable |
-| `--os darwin\|linux` | only manage the entry on this OS. Repeatable |
-| `--allow-secrets` | turn off the [secret filters](/dotsync/reference/secret-rules/) for this entry |
-| `--no-sync` | only queue the change; the next sync sends it |
+<CommandFlags name="add" />
+
+`-d` and `--source` can only be used with a single path.
 
 ## remove
 
-```text
-dotsync remove [--no-sync] <path|source>...
-```
+<CommandSynopsis name="remove" />
 
-Stops managing entries on **every** machine. Local copies stay in place everywhere as ordinary unmanaged files. The content remains in the repository history.
+Stops managing entries **on every machine**. The local copies stay where they are, everywhere, as ordinary files. The content stays in the repository's history. Name an entry by its path on this machine or by its source.
+
+<CommandFlags name="remove" />
 
 ## set
 
-```text
-dotsync set <path|source> [changes]
-```
+<CommandSynopsis name="set" />
 
-Changes an entry in the shared manifest, for every machine.
+Changes one entry in the shared manifest, **for every machine**. Name the entry by its path on this machine or by its source.
 
-| Flag | Change |
-|---|---|
-| `-d`, `--description <text>` | set the description |
-| `--ignore <glob>` | add an ignore pattern (directories). Repeatable |
-| `--unignore <glob>` | remove an ignore pattern. Repeatable |
-| `--clear-ignore` | remove every ignore pattern |
-| `--os darwin\|linux` | only manage the entry on these operating systems (replaces the current list). Repeatable |
-| `--any-os` | remove the OS restriction |
-| `--mode <octal>` | force permissions on every machine, e.g. `0600` |
-| `--no-mode` | stop forcing permissions |
-| `--write atomic\|inplace` | how local files are replaced |
-| `--allow-secrets`, `--allow-secrets=false` | turn the [secret filters](/dotsync/reference/secret-rules/) off or back on for this entry |
-| `--no-sync` | only queue the change |
+<CommandFlags name="set" />
 
-The result is validated before anything is queued, so an invalid mode or OS is refused immediately. Ignore changes are recorded as *additions and removals*, so edits made on two machines at once combine rather than overwrite each other. To change an entry's `source` or `target`, `remove` it and `add` it again.
+- `--os` replaces the whole list; `--any-os` removes it. They can't be combined, and neither can `--mode` with `--no-mode`, or `--clear-ignore` with `--unignore`.
+- Ignore changes are recorded as additions and removals, so changes made on two machines at once combine.
+- The result is checked before anything is queued, so an invalid mode, OS or write strategy is refused straight away.
+- Boolean flags take `=false` to turn something off: `--allow-secrets=false` turns the [secret rules](/dotsync/reference/secret-rules/) back on.
+- To change an entry's source or target, `remove` it and `add` it again.
 
 ## describe
 
-```text
-dotsync describe <path|source> <description>
-```
+<CommandSynopsis name="describe" />
 
-Shortcut for `dotsync set <path|source> --description <description>`.
+A shortcut for `dotsync set <path|source> --description <description>`.
 
-## exclude and include
+## exclude
 
-```text
-dotsync exclude [--no-sync] <path|source>...
-dotsync include [--no-sync] <path|source>...
-dotsync exclude            # list what's excluded on this machine
-```
+<CommandSynopsis name="exclude" />
 
-`exclude` stops managing entries **on this machine only**. The entries stay in the shared manifest, and the local files are left exactly as they are. `include` manages an excluded entry again. On that first sync, a local file that differs from the shared version is handled as on a new machine: backed up and replaced, or a conflict with `on_existing: "conflict"`. Both commands edit `exclude` in the [machine configuration](/dotsync/reference/configuration/).
+Stops managing entries **on this machine only**. The entries stay in the shared manifest, and the local files are left exactly as they are. With no arguments, lists what's excluded here. Exclusions are saved as `exclude` in the [machine configuration](/dotsync/reference/configuration/).
 
-## sync
+<CommandFlags name="exclude" />
 
-```text
-dotsync sync [-q]
-```
+## include
 
-Runs one synchronization. The background agent runs `dotsync sync -q` on a schedule.
+<CommandSynopsis name="include" />
 
-| Flag | Description |
-|---|---|
-| `-q`, `--quiet` | print nothing; exit immediately (status 0) if another sync is running; post desktop notifications for new conflicts and authentication failures |
+Manages an excluded entry on this machine again. On its first sync, a local file that differs from the shared version is handled as on a new machine: backed up and replaced, or reported as a conflict if the machine uses `--keep-existing`.
 
-The output is explained in [Output and exit codes](/dotsync/reference/output/).
+<CommandFlags name="include" />
 
 ## status
 
-```text
-dotsync status [-v] [--fetch] [--json]
-```
+<CommandSynopsis name="status" />
 
-Shows every entry and its state on this machine, plus the last sync result, the agent state, queued changes and conflicts.
+Shows every entry and its state on this machine, with the last sync's result, the agent's state, changes queued but not yet pushed, and conflicts. Directory entries also list the files that need attention. [Output and exit codes](/dotsync/reference/output/#status) explains every state.
 
-| Flag | Description |
-|---|---|
-| `-v` | list every file, not just those that need attention |
-| `--fetch` | fetch from the remote first. Without it, `status` compares against the last fetched state, which also works offline |
-| `--json` | machine-readable output |
+<CommandFlags name="status" />
+
+Without `--fetch`, `status` compares against the last fetched state, which is at most one sync interval old and works offline. It always exits with status `0` once it has run.
 
 ## list
 
-```text
-dotsync list [--json]
-```
+<CommandSynopsis name="list" />
 
-Prints the shared manifest, including entries that are skipped on this machine.
+Prints the shared manifest, sorted by source, including entries this machine skips. Entries limited to some operating systems show them in brackets.
+
+<Terminal code={listOut} />
+
+<CommandFlags name="list" />
+
+## sync
+
+<CommandSynopsis name="sync" />
+
+Runs one synchronization now, rather than waiting for the agent. [How sync works](/dotsync/concepts/how-sync-works/#one-sync-step-by-step) describes what it does, and [Output and exit codes](/dotsync/reference/output/) its output.
+
+<CommandFlags name="sync" />
+
+The background agent runs `dotsync sync -q`. Besides silencing output, `-q` makes `sync` exit straight away, with status `0`, if another sync is running, and lets it post [desktop notifications](/dotsync/guides/background-agent/#logs-and-notifications) for new conflicts and git problems.
 
 ## diff
 
-```text
-dotsync diff [--fetch] [path...]
-```
+<CommandSynopsis name="diff" />
 
-Shows a unified diff from the remote version (`-`) to the local version (`+`) for every file that differs, or only for the given paths. A directory path covers everything below it.
+Shows a unified diff from the repository's version (`-`) to this machine's (`+`) for every managed file that differs, or only for the given paths. A directory path covers everything below it. Binary files are reported as differing, without a diff.
+
+<CommandFlags name="diff" />
 
 ## resolve
 
-```text
-dotsync resolve <path>... --keep local|remote
-```
+<CommandSynopsis name="resolve" />
 
-Settles [conflicts](/dotsync/guides/resolve-conflicts/). `--keep local` sends this machine's version. `--keep remote` backs up the local file and installs the remote version. A directory path resolves every conflict below it.
+Settles [conflicts](/dotsync/guides/resolve-conflicts/). It fetches first, then syncs straight away. `--keep local` sends this machine's version; `--keep remote` backs up the local file and installs the repository's. A directory path resolves every conflict below it. It fails if there's no conflict at the paths you give.
+
+<CommandFlags name="resolve" />
 
 ## log
 
-```text
-dotsync log [-n <count>]
-```
+<CommandSynopsis name="log" />
 
-Shows recent commits to the shared repository (default 20). Each commit names the machine that made it.
+Shows recent commits to the shared repository as of the last fetch: short hash, date and time, and message. Every message starts with the name of the machine that made it.
+
+<CommandFlags name="log" />
 
 ## agent
 
-```text
-dotsync agent install|uninstall|status
-```
+<CommandSynopsis name="agent" />
 
-Manages the [background agent](/dotsync/guides/background-agent/). Run `install` again after changing `interval`, moving `git`, or changing `XDG_*` variables.
+Manages the [background agent](/dotsync/guides/background-agent/).
+
+| Action | What it does |
+|---|---|
+| `install` | writes the launchd agent, systemd units or crontab line and loads it, replacing any previous definition. Run it after changing `interval`, moving `git`, or changing `XDG_*` variables |
+| `uninstall` | unloads and removes it |
+| `status` | says whether it's installed and loaded |
 
 ## version
 
 ```text
 dotsync version
+dotsync --version
 ```
 
-Prints the version, commit, build date, Go version and platform.
+Prints the version, the commit it was built from and that commit's date, the Go version, and the platform.
+
+## help
+
+```text
+dotsync help
+dotsync help <command>
+```
+
+Lists every command, or shows one command's usage and flags. `dotsync`, `dotsync -h` and `dotsync --help` also list every command.

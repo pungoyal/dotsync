@@ -1,0 +1,58 @@
+---
+/** A command's usage line and aliases, exactly as `dotsync help <command>` prints them. */
+import { command } from '../lib/reference';
+
+interface Props {
+	name: string;
+}
+
+const c = command(Astro.props.name);
+---
+
+<div class="synopsis not-content">
+	<code>{c.usage}</code>
+	{
+		c.aliases?.length ? (
+			<span class="alias">
+				alias{' '}
+				{c.aliases.map((a) => (
+					<code>{a}</code>
+				))}
+			</span>
+		) : null
+	}
+</div>
+
+<style>
+	.synopsis {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem 1rem;
+		margin-block: 1rem;
+		padding: 0.7rem 1rem;
+		border: 1px solid var(--ds-border);
+		border-inline-start: 3px solid var(--sl-color-accent);
+		border-radius: var(--ds-radius-sm);
+		background: var(--ds-surface);
+	}
+	.synopsis > code {
+		font-family: var(--sl-font-mono);
+		font-size: 0.875rem;
+		color: var(--sl-color-white);
+		overflow-wrap: anywhere;
+	}
+	.alias {
+		font-size: 0.8rem;
+		color: var(--sl-color-gray-3);
+	}
+	.alias code {
+		font-family: var(--sl-font-mono);
+		margin-inline-start: 0.25rem;
+		padding: 0.05rem 0.4rem;
+		border-radius: 0.3rem;
+		background: var(--sl-color-bg-inline-code);
+		color: var(--sl-color-white);
+	}
+</style>

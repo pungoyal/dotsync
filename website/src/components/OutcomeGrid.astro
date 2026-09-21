@@ -1,0 +1,156 @@
+---
+/**
+ * dotsync's sync rule as a 2×2 grid: whether a file changed on this machine, and on another
+ * machine, since the version they last agreed on (see decide() in internal/dotsync/plan.go).
+ * A real table, so the axes are read out with each cell. On narrow screens each cell becomes a card
+ * that names its own case (the .axes text, hidden at other widths).
+ */
+---
+
+<div class="grid-wrap not-content">
+	<table class="outcomes">
+		<caption>What dotsync does with a file, by where it changed since the machines last agreed</caption>
+		<thead>
+			<tr>
+				<td></td>
+				<th scope="col">Unchanged on other machines</th>
+				<th scope="col">Changed on another machine</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr>
+				<th scope="row">Unchanged here</th>
+				<td data-kind="ok">
+					<span class="axes">Unchanged here and elsewhere</span>
+					<strong><span class="dot" aria-hidden="true"></span>Nothing to do</strong>
+					<span>Every machine already has this version.</span>
+				</td>
+				<td data-kind="in">
+					<span class="axes">Changed only on another machine</span>
+					<strong><span class="dot" aria-hidden="true"></span>Installed here</strong>
+					<span>This machine's copy is backed up first.</span>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row">Changed here</th>
+				<td data-kind="out">
+					<span class="axes">Changed only here</span>
+					<strong><span class="dot" aria-hidden="true"></span>Sent everywhere</strong>
+					<span>Pushed, then installed by every other machine.</span>
+				</td>
+				<td data-kind="conflict">
+					<span class="axes">Changed here and on another machine</span>
+					<strong><span class="dot" aria-hidden="true"></span>Conflict</strong>
+					<span>Nothing is touched. You pick a version with one command.</span>
+				</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+<style>
+	.grid-wrap {
+		overflow-x: auto;
+		margin-block: 1.5rem;
+	}
+	.outcomes {
+		width: 100%;
+		min-width: 34rem;
+		border-collapse: separate;
+		border-spacing: 0.6rem;
+		margin: -0.6rem;
+		width: calc(100% + 1.2rem);
+		table-layout: fixed;
+	}
+	caption {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	thead th,
+	tbody th {
+		font-size: var(--sl-text-2xs);
+		font-weight: 650;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-3);
+		text-align: center;
+		padding: 0.25rem;
+	}
+	thead td {
+		width: 7.5rem;
+	}
+	tbody th {
+		text-align: end;
+		padding-inline-end: 0.5rem;
+		vertical-align: middle;
+	}
+	tbody td {
+		padding: 1.1rem 1.2rem;
+		border: 1px solid var(--ds-border);
+		border-top: 3px solid var(--kind);
+		border-radius: var(--ds-radius);
+		background: color-mix(in oklab, var(--kind) 7%, var(--ds-surface));
+		vertical-align: top;
+	}
+	td[data-kind='ok'] { --kind: var(--ds-ok); }
+	td[data-kind='in'] { --kind: var(--ds-in); }
+	td[data-kind='out'] { --kind: var(--ds-out); }
+	td[data-kind='conflict'] { --kind: var(--ds-conflict); }
+	strong {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 1.05rem;
+		font-weight: 650;
+		color: var(--sl-color-white);
+	}
+	.dot {
+		width: 0.6rem;
+		height: 0.6rem;
+		border-radius: 50%;
+		background: var(--kind);
+		flex: none;
+	}
+	.axes {
+		display: none;
+	}
+	td span:not(.dot, .axes) {
+		display: block;
+		margin-top: 0.3rem;
+		font-size: 0.9rem;
+		line-height: 1.5;
+		color: var(--sl-color-gray-2);
+	}
+	/* Narrow screens: one card per outcome, each saying which case it is. */
+	@media (max-width: 40rem) {
+		.outcomes,
+		.outcomes tbody,
+		.outcomes tr {
+			display: grid;
+			gap: 0.75rem;
+			min-width: 0;
+			width: auto;
+			margin: 0;
+		}
+		.outcomes thead,
+		.outcomes tbody th {
+			display: none;
+		}
+		.axes {
+			display: block;
+			margin-bottom: 0.35rem;
+			font-size: var(--sl-text-2xs);
+			font-weight: 650;
+			letter-spacing: 0.06em;
+			text-transform: uppercase;
+			color: var(--sl-color-gray-3);
+		}
+	}
+	@media (forced-colors: active) {
+		tbody td { border-top-color: CanvasText; }
+	}
+</style>

@@ -385,6 +385,34 @@ func applyUpdate(raw map[string]any, op *Op) map[string]any {
 	return out
 }
 
+// osListOf is an entry's "os" field as a list; empty means every OS.
+func osListOf(v any) []string {
+	if s, ok := v.(string); ok {
+		return []string{s}
+	}
+	return stringsOf(v)
+}
+
+// disjointOS reports whether two entries' OS lists rule out any machine managing both.
+func disjointOS(a, b any) bool {
+	la, lb := osListOf(a), osListOf(b)
+	if len(la) == 0 || len(lb) == 0 {
+		return false
+	}
+	for _, o := range la {
+		if containsStr(lb, o) {
+			return false
+		}
+	}
+	return true
+}
+
+// appliesHere reports whether an entry's OS list includes this machine's OS.
+func appliesHere(raw map[string]any) bool {
+	l := osListOf(raw["os"])
+	return len(l) == 0 || containsStr(l, osName())
+}
+
 // stringsOf converts a JSON list ([]any or []string) to []string, skipping non-strings.
 func stringsOf(v any) []string {
 	var out []string
@@ -431,6 +459,9 @@ func applyOp(c *Ctx, m *Manifest, op *Op) error {
 			}
 			if overlaps(strings.ToLower(other), strings.ToLower(src)) {
 				return fmt.Errorf("source '%s' overlaps existing source '%s'", src, other)
+			}
+			if disjointOS(raw["os"], op.Entry["os"]) {
+				continue // never managed on the same machine: e.g. one file for macOS, another for Linux
 			}
 			if t, err := expandTarget(str(raw["target"]), c.Paths); err == nil && overlaps(t, newTarget) {
 				return fmt.Errorf("%s overlaps %s, which is managed as '%s'", tilde(newTarget), str(raw["target"]), other)

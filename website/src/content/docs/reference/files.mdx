@@ -1,26 +1,53 @@
 ---
 title: Files and locations
-description: Everything dotsync stores on a machine, and what each file is for.
+description: Everything dotsync stores on a machine, what each file is for, and whether it's safe to delete.
 ---
 
-Everything dotsync keeps on a machine lives under the standard XDG base directories. The paths below are the defaults, and they move if you set the corresponding `XDG_*` variable.
+import { Aside } from '@astrojs/starlight/components';
+
+Everything dotsync keeps on a machine lives under the XDG base directories. The paths below are the defaults; each group moves if you set the matching variable (`XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `XDG_STATE_HOME`) to an absolute path. Nothing here is ever synced.
+
+## Configuration: `~/.config/dotsync/`
 
 | Path | Purpose | Safe to delete? |
 |---|---|---|
-| `~/.config/dotsync/config.json` | [machine configuration](/dotsync/reference/configuration/) | only if you `init` again |
-| `~/.local/share/dotsync/repo/` | cache clone of the shared repository. dotsync resets it whenever needed (at least daily); never edit it | yes; `init` recreates it |
-| `~/.local/share/dotsync/icon.png` | the app icon, used for desktop notifications | yes; it's recreated |
-| `~/.local/state/dotsync/state.json` | the base of every managed file, queued changes, conflicts, last sync result, and a cache of file metadata so unchanged files aren't re-read | yes, but see below |
-| `~/.local/state/dotsync/backups/<run>/` | copies of local files dotsync replaced or deleted. Pruned after [`backup_retention_days`](/dotsync/reference/configuration/), keeping the newest copy of each file | yes; old runs can go any time |
-| `~/.local/state/dotsync/conflicts/` | a copy of the remote side of each current conflict, for `diff` | yes |
-| `~/.local/state/dotsync/sync.log` | log of changes, conflicts and errors (rotated to `sync.log.1` at 1 MiB) | yes |
-| `~/.local/state/dotsync/agent.log` | output of the scheduled job | yes |
-| `~/.local/state/dotsync/lock` | prevents two syncs running at once | yes, when no sync is running |
-| `~/.local/bin/dotsync` | the binary the agent runs | reinstall with `init` |
-| `~/Library/LaunchAgents/io.github.dotsync.plist` | macOS agent | use `dotsync agent uninstall` |
-| `~/.config/systemd/user/dotsync.{service,timer}` | Linux agent (systemd) | use `dotsync agent uninstall` |
+| `config.json` | the [machine configuration](/dotsync/reference/configuration/) | only if you run `init` again |
 
-- If `state.json` is **corrupted**, dotsync sets it aside. On the next sync, every file that differs from the remote becomes a **conflict** for you to review.
-- If it's **deleted**, every entry counts as newly managed on this machine, as on a fresh `init`. Differing local files are backed up and replaced, or become conflicts if `on_existing` is `"conflict"`.
+## Data: `~/.local/share/dotsync/`
 
-Either way, files that match the remote are simply recorded again, and nothing is lost without a backup.
+| Path | Purpose | Safe to delete? |
+|---|---|---|
+| `repo/` | the cache clone of the shared repository. dotsync resets it whenever it needs to, and at least daily. Never edit it | yes; run `init` to recreate it |
+| `icon.png` | the dotsync icon, for desktop notifications | yes; it's recreated |
+
+## State: `~/.local/state/dotsync/`
+
+| Path | Purpose | Safe to delete? |
+|---|---|---|
+| `state.json` | the base of every managed file, queued changes, conflicts, the last sync's result, housekeeping dates, and a cache of file metadata so unchanged files aren't read again | yes, but see below |
+| `state.json.corrupt-<time>` | a state file that couldn't be read, set aside | yes |
+| `backups/<run>/` | copies of local files dotsync replaced or deleted, one directory per sync run. Pruned after [`backup_retention_days`](/dotsync/reference/configuration/), keeping the newest copy of each file | yes, any time |
+| `conflicts/` | a copy of the repository's side of each current conflict, for `diff` | yes |
+| `sync.log`, `sync.log.1` | changes, conflicts and errors, rotated at 1 MiB | yes |
+| `agent.log` | the background job's output, with launchd and cron | yes |
+| `lock` | keeps two syncs from running at once | yes, when no sync is running |
+
+## Elsewhere
+
+| Path | Purpose | Safe to delete? |
+|---|---|---|
+| `~/.local/bin/dotsync` | the binary the background agent runs | reinstall with `init` or the install script |
+| `~/Library/LaunchAgents/io.github.dotsync.plist` | the background agent on macOS | use `dotsync agent uninstall` |
+| `~/.config/systemd/user/dotsync.service`, `dotsync.timer` | the background agent on Linux with systemd | use `dotsync agent uninstall` |
+| a line in your crontab ending in `# dotsync-agent` | the background agent on Linux without systemd | use `dotsync agent uninstall` |
+
+## If the state file goes missing
+
+- If `state.json` is **unreadable**, dotsync sets it aside. On the next sync, every file that differs from the repository becomes a **conflict** for you to review.
+- If it's **deleted**, every entry counts as newly managed on this machine, as on a fresh `init`. Differing local files are backed up and replaced, or become conflicts if [`on_existing`](/dotsync/reference/configuration/) is `"conflict"`.
+
+Either way, files that match the repository are simply recorded again, and nothing is replaced without a backup.
+
+<Aside>
+Removing dotsync completely? See [Uninstall](/dotsync/guides/uninstall/).
+</Aside>

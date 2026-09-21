@@ -1,11 +1,12 @@
 ---
 title: Manifest
-description: Every field of manifest.json, the shared list of managed files.
+description: Every field of manifest.json, the shared list of managed files, how targets are written, how the manifest is validated, and the repository's layout.
 ---
 
 import { Aside, Badge, FileTree } from '@astrojs/starlight/components';
+import ref from '../../../data/reference.json';
 
-`manifest.json`, at the root of your dotfiles repository, is the authoritative list of what is managed. `dotsync add`, `remove` and `describe` edit it for you. You can also edit it by hand in any clone and push.
+`manifest.json`, at the root of your dotfiles repository, is the list of what's managed on every machine. `dotsync add`, `remove`, `set` and `describe` edit it for you; you can also edit it by hand in any clone and push.
 
 ## Example
 
@@ -20,6 +21,14 @@ import { Aside, Badge, FileTree } from '@astrojs/starlight/components';
       "type": "file"
     },
     {
+      "source": "karabiner/karabiner.json",
+      "target": "~/.config/karabiner/karabiner.json",
+      "description": "Keyboard remapping",
+      "type": "file",
+      "os": ["darwin"],
+      "write": "inplace"
+    },
+    {
       "source": "nvim",
       "target": "$XDG_CONFIG_HOME/nvim",
       "description": "Neovim",
@@ -27,98 +36,101 @@ import { Aside, Badge, FileTree } from '@astrojs/starlight/components';
       "ignore": ["lazy-lock.json", "spell/*.spl"]
     },
     {
-      "source": "karabiner/karabiner.json",
-      "target": "~/.config/karabiner/karabiner.json",
-      "description": "Keyboard remapping",
-      "os": ["darwin"],
-      "write": "inplace"
-    },
-    {
       "source": "ssh/config",
       "target": "~/.ssh/config",
       "description": "SSH client configuration",
+      "type": "file",
       "mode": "0600"
     }
   ]
 }
 ```
 
+dotsync writes the manifest with entries sorted by source and fields in a fixed order, so every machine produces byte-identical output for the same content.
+
 ## Entry fields
 
 ### `source` <Badge text="required" variant="note" size="small" />
 
-Path of the content under `files/` in the repository. It must be relative, with no `..` or `.git` components. Two sources may not overlap (one inside the other); they're compared case-insensitively, because macOS file systems usually are.
+Where the content lives, under `files/` in the repository. It must be a relative path, without `..` or `.git` components or components with leading or trailing spaces. No two sources may overlap, meaning one can't be inside another; they're compared case-insensitively, because macOS file systems usually are.
 
 ### `target` <Badge text="required" variant="note" size="small" />
 
-Where the file or directory lives on each machine, written portably. See [targets](#targets).
+Where the file or directory lives on each machine, written so that it works on every machine. See [targets](#targets).
 
-### `description` <Badge text="required" variant="note" size="small" />
+### `description`
 
-Short, human-readable text shown by `status` and `list`.
+Short, human-readable text shown by `status` and `list`. `dotsync add` sets it to the file name unless you pass `-d`.
 
 ### `type`
 
-`"file"` or `"dir"`. `dotsync add` always sets it. If it's missing, dotsync infers it from the repository, then from the local path.
+`"file"` or `"dir"`. `dotsync add` always sets it. If it's missing, dotsync infers it from what's in the repository, and failing that from the local path.
 
 ### `os`
 
-List of operating systems that manage this entry: `"darwin"`, `"linux"`. Other machines skip it and show it as *skipped*.
+The operating systems that manage this entry: a list of {ref.supported_os.map((o, i) => <>{i > 0 && ', '}<code>"{o}"</code></>)}, or a single string. Machines running any other OS skip the entry and show it as `skipped`. Without `os`, every machine manages it.
 
 ### `mode`
 
-Octal permissions forced on every machine, e.g. `"0600"`. Without it, each machine keeps its own permissions, and only the executable bit is synced.
+Octal permissions, as a string such as `"0600"`, that every machine gives the file whenever dotsync writes it there. Without `mode`, each machine keeps its own permissions and only the executable bit syncs.
 
 ### `write`
 
-How local files are replaced:
+How a local file is replaced:
 
-- `"atomic"` (default): write a temporary file and rename it into place. Readers never see a half-written file.
-- `"inplace"`: rewrite the existing file, keeping its inode. Use it for applications that watch the inode, or containers that bind-mount a single file.
+- `"atomic"` (default): write a temporary file next to it and rename it into place. Programs never see a half-written file.
+- `"inplace"`: rewrite the existing file, keeping its inode, for programs that watch the inode, or containers that bind-mount a single file. The write is still flushed to disk.
 
 ### `ignore`
 
-Directory entries only: glob patterns for files that should never sync. Each pattern is matched against every path component's name and against the path so far, relative to the entry. `*` also matches `/`. A pattern that matches a directory skips everything below it. These are always ignored: `.DS_Store`, `._*`, `*.swp`, `*.swo`, `*~`, `.#*`, `.git`, `__pycache__`, `*.pyc`.
+Directory entries only: glob patterns for files that never sync. Each pattern is matched against every path component's name and against the path so far, relative to the entry, so a pattern that matches a directory skips everything below it. `*` matches any characters including `/`, `?` matches one character, and `[…]` a character class (`[!…]` negates it). These are always ignored: {ref.default_ignore.map((p, i) => <>{i > 0 && ', '}<code>{p}</code></>)}.
 
 ### `allow_secrets`
 
-`true` turns off the [secret filters](/dotsync/reference/secret-rules/) for this entry.
+`true` turns off the [secret rules](/dotsync/reference/secret-rules/) for this entry.
 
 <Aside>
-Fields dotsync doesn't recognise are preserved when it rewrites the manifest, so newer versions can add fields without older ones dropping them.
+Fields dotsync doesn't recognize are kept when it rewrites the manifest, so a newer version can add fields without an older one dropping them.
 </Aside>
 
 ## Targets
 
-The same target text must work on every machine:
+The same target text has to work on every machine, so it's written relative to the home directory or to an environment variable:
 
 | Form | Expands to |
 |---|---|
 | `~/…` | `$HOME/…` |
-| `$XDG_CONFIG_HOME/…` | `$XDG_CONFIG_HOME`, or `~/.config` if unset |
-| `$XDG_DATA_HOME/…` | `$XDG_DATA_HOME`, or `~/.local/share` if unset |
-| `$XDG_STATE_HOME/…` | `$XDG_STATE_HOME`, or `~/.local/state` if unset |
-| `$XDG_CACHE_HOME/…` | `$XDG_CACHE_HOME`, or `~/.cache` if unset |
-| `$VAR/…` or `${VAR}/…` | the variable's value, which must be an absolute path. On a machine where it's unset, the entry reports an error |
+| `$XDG_CONFIG_HOME/…` | `$XDG_CONFIG_HOME/…`, or `~/.config/…` if it's unset |
+| `$XDG_DATA_HOME/…` | `$XDG_DATA_HOME/…`, or `~/.local/share/…` if it's unset |
+| `$XDG_STATE_HOME/…` | `$XDG_STATE_HOME/…`, or `~/.local/state/…` if it's unset |
+| `$XDG_CACHE_HOME/…` | `$XDG_CACHE_HOME/…`, or `~/.cache/…` if it's unset |
+| `$VAR/…` or `${VAR}/…` | the variable's value, which must be an absolute path. On a machine where it's unset, the entry shows an error |
 
-A target must resolve **inside `$HOME`**, and outside dotsync's own directories. Absolute paths are rejected because they're machine-specific. Two targets may not overlap.
+An `XDG_*` variable only counts if it's an absolute path; otherwise its default is used. `dotsync add` always writes targets as `~/…`.
+
+A target must resolve **inside the home directory**, but not to the home directory itself, and outside dotsync's own directories. Absolute paths are rejected, because they differ between machines. No two targets managed on the same machine may overlap.
 
 ## Validation
 
-- If `manifest.json` isn't valid JSON, a sync **stops before changing anything** and reports the parse error.
-- An invalid entry is reported by `sync` and `status` and skipped. Every other entry syncs normally, and the invalid entry's history on each machine is kept for when it's fixed.
-- A top-level JSON array of entries is accepted too, and rewritten in the full form.
+- If `manifest.json` isn't valid JSON, or has no `entries` list, a sync **stops before changing anything** and reports the problem. Fix it in any clone and push.
+- An invalid entry is reported as an `ERROR` by `sync` and `status` and skipped. Every other entry syncs normally, and each machine keeps the invalid entry's history for when it's fixed.
+- A top-level JSON array of entries is accepted too, and rewritten in the full form the next time dotsync changes the manifest.
 
 ## Repository layout
 
 <FileTree>
 - manifest.json the list of managed entries
-- files/
-  - fish/config.fish
+- files/ the content, one file or directory per source
+  - .keep created by `init`, so the directory exists before anything is managed
+  - fish/
+    - config.fish
   - gitconfig
   - nvim/
     - init.lua
-    - lua/…
-- README.md created by `init`
-- .gitattributes `* -text`: content is stored byte for byte
+    - lua/
+      - plugins.lua
+- README.md written by `init`, explains the layout
+- .gitattributes `* -text`, so git stores content byte for byte
 </FileTree>
+
+Every commit dotsync makes is authored as `dotsync (<host>)` and starts with the host's name, for example `laptop: manage nvim; update 2 file(s)`. The body lists each file it updated or deleted.

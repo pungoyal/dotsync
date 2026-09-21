@@ -1,13 +1,13 @@
 ---
 title: Add another machine
-description: Bring a new or existing Mac or Linux machine into sync, and choose what happens to files it already has.
+description: Bring a new or existing Mac or Linux machine into sync, decide what happens to files it already has, and retire a machine.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
 <Steps>
 
-1. [Install dotsync](/dotsync/start/installation/) and make sure `git` can reach your repository without a password prompt:
+1. [Install dotsync](/dotsync/start/installation/), and make sure `git` reaches your repository without any prompt:
 
    ```sh
    git ls-remote git@github.com:you/dotfiles.git
@@ -19,36 +19,52 @@ import { Steps, Aside } from '@astrojs/starlight/components';
    dotsync init git@github.com:you/dotfiles.git
    ```
 
+   `init` clones the repository, installs every managed file, copies the binary to `~/.local/bin` and starts the [background agent](/dotsync/guides/background-agent/). It's safe to run again.
+
 3. Check the result:
 
    ```sh
-   dotsync doctor     # setup, remote access, agent
+   dotsync doctor     # git access, the agent, the last sync
    dotsync status     # every managed file
    ```
 
 </Steps>
 
-## Files that already exist
+## Files the machine already has
 
-A new machine often has its own versions of managed files: a distribution's default `.bashrc`, or an old `.gitconfig`. You choose what happens to them:
+A machine often has its own version of a managed file already: a distribution's default `.bashrc`, or an old `.gitconfig`. You choose what happens to it:
 
-| | `dotsync init <url>` (default) | `dotsync init --keep-existing <url>` |
+| This machine has… | `dotsync init <url>` | `dotsync init --keep-existing <url>` |
 |---|---|---|
-| File missing here | installed | installed |
-| Identical file here | left as is | left as is |
-| **Different** file here | **backed up**, then replaced by the shared version | left untouched and reported as a **conflict** |
+| no such file | the shared version is installed | the shared version is installed |
+| an identical file | it's left as it is | it's left as it is |
+| a **different** file | it's **backed up**, then replaced by the shared version | it's left untouched and reported as a **conflict** |
 
-The default gets a new machine consistent with no questions asked. Nothing is lost, because every replaced file is in `~/.local/state/dotsync/backups/`. Use `--keep-existing` when the machine has changes worth reviewing file by file. Then [resolve each conflict](/dotsync/guides/resolve-conflicts/).
+The default gets a new machine consistent without asking you anything, and nothing is lost: every replaced file is in `~/.local/state/dotsync/backups/`. Choose `--keep-existing` when the machine has changes you want to review file by file, then [resolve each conflict](/dotsync/guides/resolve-conflicts/).
+
+A file that exists only on this machine, in a spot the manifest manages but the repository has nothing for yet, is sent to the repository.
 
 <Aside>
-This choice only applies the **first time** an entry is synced on a machine. After that, a file that changes on both sides is always a conflict. The setting is stored as `on_existing` in the [machine configuration](/dotsync/reference/configuration/).
+The choice only matters the **first time** an entry syncs on a machine, including when you later `add` an entry or `include` one. After that, a file changed on both sides is always a conflict. The setting is saved as [`on_existing`](/dotsync/reference/configuration/) in this machine's configuration.
 </Aside>
 
 ## A machine that shouldn't get everything
 
-- Entries marked for another OS (`"os": ["darwin"]`) are skipped automatically.
-- To skip an entry on this machine only, run `dotsync exclude <entry>` there. See [Per-OS and per-machine differences](/dotsync/guides/differences/).
+- Entries limited to another operating system, like `"os": ["darwin"]` on a Linux machine, are skipped automatically.
+- To skip an entry on this machine only, run `dotsync exclude <entry>` here.
 
-## Replacing a machine
+See [Per-OS and per-machine differences](/dotsync/guides/differences/).
 
-When you retire a machine, there's nothing to undo on the others. On the old machine you can [uninstall](/dotsync/guides/uninstall/) dotsync, or just wipe it.
+## Options for `init`
+
+| Flag | Use it to |
+|---|---|
+| `--keep-existing` | turn differing existing files into conflicts, as above |
+| `--branch <name>` | sync a branch other than `main` |
+| `--interval <seconds>` | sync more or less often than every 300 seconds |
+| `--no-agent` | skip the background agent, if you'll run `dotsync sync -q` from your own scheduler |
+| `--no-install` | leave the binary where it is instead of copying it to `~/.local/bin` |
+
+## Retiring a machine
+
+There's nothing to undo on the others. On the old machine, [uninstall dotsync](/dotsync/guides/uninstall/), or just wipe it. Its commits stay in the repository's history.

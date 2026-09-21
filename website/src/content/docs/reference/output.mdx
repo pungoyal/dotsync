@@ -1,51 +1,100 @@
 ---
 title: Output and exit codes
-description: What each line of dotsync's output means, its status labels, and its exit codes.
+description: What every line of dotsync's output means, its status labels, the JSON output, the log format, and its exit codes.
 ---
 
-## `sync` output
+import Terminal from '../../../components/Terminal.astro';
 
-Each file that needed action gets one line, followed by a summary:
-
-```console frame="terminal"
+export const syncOut = `
 $ dotsync sync
+  BLOCKED   ~/.config/fish/config.fish  (content looks like a GitHub token)
   updated   ~/.gitconfig  (previous version saved to ~/.local/state/dotsync/backups/20260921-111609-4242/.gitconfig)
   sent      ~/.config/nvim/init.lua
-  CONFLICT  ~/.zshrc  (changed here and on another machine; see `dotsync diff ~/.zshrc`)
-dotsync: 1 updated, 1 sent, 1 conflict — pushed 51c7e02
-```
+  removed   ~/.config/nvim/lua/old.lua  (deleted on another machine; saved to ~/.local/state/dotsync/backups/20260921-111609-4242/.config/nvim/lua/old.lua)
+  CONFLICT  ~/.zshrc  (changed here and on another machine; see \`dotsync diff ~/.zshrc\`)
+dotsync: 1 updated, 1 removed, 1 sent, 1 conflict, 1 blocked — pushed 51c7e02
+`;
+
+export const statusOut = `
+$ dotsync status
+dotsync on laptop: git@github.com:you/dotfiles.git (main @ 51c7e02)
+last sync: 2026-09-21T11:16:09+05:30 (ok)
+automatic sync: launchd agent loaded
+queued, not yet pushed: add tmux.conf
+
+SOURCE            TARGET                      STATUS      DESCRIPTION
+fish/config.fish  ~/.config/fish/config.fish  BLOCKED     Fish shell configuration
+                                              ↳ content looks like a GitHub token
+gitconfig         ~/.gitconfig                ok          Git identity and aliases
+i3                ~/.config/i3/               skipped     Window manager
+                                              ↳ only for linux
+nvim              ~/.config/nvim/             1 incoming  Neovim
+                                              - ~/.config/nvim/init.lua: download
+zshrc             ~/.zshrc                    CONFLICT    Zsh configuration
+…
+`;
+
+## `sync`
+
+`sync` prints one line for each file that needed something done, in the order of the manifest, then a summary:
+
+<Terminal code={syncOut} />
 
 | Label | Meaning |
 |---|---|
-| `updated` | a remote change was installed here; the previous version was backed up |
-| `removed` | deleted on another machine and removed here; backed up |
-| `sent` | a local change was pushed |
-| `deleted` | a local deletion was pushed |
-| `waiting` | a local change is ready but the remote is unreachable; it will be sent later |
-| `CONFLICT` | changed here and elsewhere; nothing was touched |
-| `BLOCKED` | a local change looks like a secret and wasn't sent |
+| `updated` | a change from another machine was installed here; the previous version was backed up first |
+| `removed` | deleted on another machine and removed here; backed up first |
+| `sent` | a change made here was pushed |
+| `deleted` | a deletion made here was pushed |
+| `waiting` | a change made here is ready, but the remote is unreachable; it's sent on a later sync |
+| `CONFLICT` | changed here and on another machine; nothing was touched |
+| `BLOCKED` | a change made here looks like a secret, and wasn't sent |
 | `ERROR` | this file or entry couldn't be processed; everything else was |
 
-When the remote is unreachable, the summary ends with `remote unreachable (<git error>)`.
+The summary counts each label, or says `in sync (N files)` when there was nothing to do. It ends with `— pushed <commit>` when this sync pushed a commit, and with `— remote unreachable (<git's error>)` when it couldn't reach the remote. When git failed in a way you need to fix, a `✗` line with the problem and a `→` line with the fix follow.
 
-## `status` states
+## `status`
+
+<Terminal code={statusOut} />
+
+The header shows this machine's name, the remote, the branch and the commit last fetched; when and how the last sync ended (`ok`, `partial` if some files had errors, or `offline` followed by git's error); the background agent's state; and any changes queued but not yet pushed. Then comes one row per manifest entry:
 
 | State | Meaning |
 |---|---|
 | `ok` | in sync |
-| `N incoming` | remote changes waiting to be installed here |
-| `N outgoing` | local changes waiting to be sent |
+| `N incoming` | changes from other machines waiting to be installed here |
+| `N outgoing` | changes made here waiting to be sent |
 | `CONFLICT` | at least one file is in conflict |
-| `BLOCKED` | at least one file is held back as a possible secret |
-| `ERROR` | the entry or one of its files has a problem; the reason is shown below the row |
-| `skipped` | the entry is for another OS or excluded on this machine |
+| `BLOCKED` | at least one file is held back as a possible secret; the reason is shown below the row |
+| `ERROR` | the entry, or one of its files, has a problem; the reason is shown below the row |
+| `skipped` | the entry is for another OS, or excluded on this machine; the reason is shown below the row |
 
-`status` compares against the last fetched state unless you pass `--fetch`. Use `status --json` for scripts.
+For a directory, `CONFLICT`, `BLOCKED` and `ERROR` carry a count, as in `BLOCKED (2)`, and the files that need attention are listed below the row with what's pending for each: `download`, `delete-local`, `upload`, `delete-repo`, `conflict`, `blocked` or `error`. `status -v` lists every file of every entry, including those that are `ok`.
+
+After the table, `status` explains what needs you: blocked files, and every conflict with when it started and how to settle it.
+
+`status` compares against the last fetched state, so it's fast and works offline; `status --fetch` fetches first.
+
+## JSON output
+
+`dotsync status --json` prints one object with `host`, `remote`, `branch`, `remote_commit`, `last_sync`, `pending_ops`, `conflicts`, `agent`, and `entries`. Each entry has `source`, `target`, `description`, `type`, `status`, `files`, and, when there's something to say, `note` and `items` (the files needing attention, each with `path`, `action` and `note`). `dotsync list --json` prints the manifest's entries exactly as they're stored, sorted by source.
+
+## The log
+
+`~/.local/state/dotsync/sync.log` has one line per event, each starting with the time:
+
+```text title="~/.local/state/dotsync/sync.log"
+2026-09-21T11:16:09+05:30 download     ~/.gitconfig previous version saved to ~/.local/state/dotsync/backups/20260921-111609-4242/.gitconfig
+2026-09-21T11:16:09+05:30 upload       ~/.config/nvim/init.lua
+2026-09-21T11:16:09+05:30 sync ok pushed 51c7e02
+```
+
+Each changed, conflicting, blocked or failed file gets a line with its action, then there's one summary line: `sync ok`, `sync partial` or `sync offline`, with the commit pushed or git's error. A sync that did nothing, and ended the same way as the one before, writes nothing.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
-| `0` | success. Conflicts and blocked files are reported but aren't failures |
-| `1` | an error, or at least one file or entry could not be processed |
-| `2` | invalid usage (unknown command or flag, missing arguments) |
+| `0` | success. Conflicts, blocked files and an unreachable remote are reported, but aren't failures |
+| `1` | an error: a command failed, a file or entry couldn't be processed, or a `doctor` check failed |
+| `2` | invalid usage: an unknown command or flag, or missing arguments |

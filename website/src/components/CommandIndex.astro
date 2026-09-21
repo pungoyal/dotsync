@@ -1,0 +1,89 @@
+---
+/** Every command, grouped as `dotsync help` groups them, linking to its section on this page. */
+import { reference } from '../lib/reference';
+
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+---
+
+<div class="index not-content">
+	{
+		reference.commands.map((g) => (
+			<section>
+				<h3>{sentence(g.title)}</h3>
+				<ul>
+					{g.commands.map((c) => (
+						<li>
+							<a href={`#${c.name}`}>
+								<code>{c.name}</code>
+								{c.aliases?.map((a) => (
+									<code class="alias">{a}</code>
+								))}
+							</a>
+							<span>{sentence(c.summary)}</span>
+						</li>
+					))}
+				</ul>
+			</section>
+		))
+	}
+</div>
+
+<style>
+	.index {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+		gap: 1rem;
+		margin-block: 1.5rem;
+	}
+	section {
+		padding: 1rem 1.1rem 0.6rem;
+		border: 1px solid var(--ds-border);
+		border-radius: var(--ds-radius);
+		background: var(--ds-surface);
+	}
+	h3 {
+		margin: 0 0 0.6rem;
+		font-size: var(--sl-text-2xs);
+		font-weight: 650;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-3);
+	}
+	ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	li {
+		display: grid;
+		gap: 0.05rem;
+		padding-block: 0.4rem;
+		font-size: 0.875rem;
+		line-height: 1.45;
+	}
+	li + li {
+		border-top: 1px solid var(--ds-border);
+	}
+	a {
+		text-decoration: none;
+		width: fit-content;
+	}
+	a code {
+		font-family: var(--sl-font-mono);
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--sl-color-text-accent);
+	}
+	a:hover code:first-child {
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+	}
+	.alias {
+		margin-inline-start: 0.4rem;
+		font-weight: 400;
+		color: var(--sl-color-gray-3);
+	}
+	span {
+		color: var(--sl-color-gray-2);
+	}
+</style>

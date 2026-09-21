@@ -1,67 +1,116 @@
 ---
 title: Troubleshooting
-description: Fix common problems. Status shows offline, BLOCKED or ERROR; the agent isn't running; a file keeps coming back.
+description: Fix the common problems. The remote is unreachable, a file is BLOCKED, CONFLICT or ERROR, nothing syncs on its own, or a file keeps changing back.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import Terminal from '../../../components/Terminal.astro';
 
-Start with **`dotsync doctor`**. It checks git, the remote (exactly as the background agent reaches it), the agent, the last sync and your managed files, and prints a `→` fix for each problem. Then `dotsync status -v` shows every file that needs attention, with the reason.
+export const doctor = `
+$ dotsync doctor
+dotsync doctor
+  ✓ dotsync 0.5.0 (ed63c37, 2026-09-21T06:18:53Z) go1.27.1 linux/amd64
+  ✓ git version 2.43.0
+  ✓ configuration: ~/.config/dotsync/config.json
+      remote git@github.com:you/dotfiles.git, branch main
+  ✗ remote not reachable: github.com rejected the SSH key, or no key is available to git
+      git@github.com: Permission denied (publickey).
+      → add your key to ssh-agent (ssh-add) and check with: ssh -T git@github.com; see https://pungoyal.github.io/dotsync/guides/background-agent/#git-access-without-prompts
+  ✓ background agent: systemd timer (active)
+  ! last sync 2m0s ago could not reach the remote
+      git@github.com: Permission denied (publickey).
+  ✓ 12 managed entries, 148 files
+  · backups: 6 file(s), 41.2 KiB in ~/.local/state/dotsync/backups (older than 90 days are pruned)
 
-## `last sync: … (offline: …)`
+Some checks failed; see the → lines above.
+`;
 
-dotsync couldn't reach the remote. The text after `offline:` is git's own error. When the cause is something you need to fix, `status` and `doctor` print it underneath with a `→` fix, and the agent sends a desktop notification.
+export const offline = `
+$ dotsync sync
+  waiting   ~/.gitconfig  (will be sent when the remote is reachable)
+dotsync: 1 waiting — remote unreachable (ssh: Could not resolve hostname github.com: nodename nor servname provided, or not known)
+`;
 
-| Error mentions | Fix |
+Start with **`dotsync doctor`**. It checks git, your configuration, the remote (reached exactly as the background agent reaches it), the agent, the last sync and your managed files, and prints a `→` line with the fix for each problem:
+
+<Terminal code={doctor} />
+
+`✗` is a failure, `!` a warning and `·` information. `dotsync status -v` then lists every file with its state.
+
+## The remote is unreachable
+
+`sync` keeps going without the remote: changes from other machines wait, and so do yours, marked `waiting`. `status` shows `last sync: … (offline: …)`, followed by git's error.
+
+<Terminal code={offline} />
+
+dotsync shows the line of git's error that names the cause, leaving out the generic advice git prints after it. When dotsync recognizes the cause, `status` and `doctor` print it underneath with a `→` fix, and the agent sends a desktop notification. To see git's whole message, fetch by hand:
+
+```sh
+git -C ~/.local/share/dotsync/repo fetch
+```
+
+| git's error mentions | Cause and fix |
 |---|---|
-| `Permission denied (publickey)`, `Authentication failed`, `could not read Username` | git needs credentials it can't prompt for. See [git access without prompts](/dotsync/guides/background-agent/#git-access-without-prompts) |
-| `git is configured to run /usr/bin/gh, which isn't installed on this machine` | a synced git config names a program by an absolute path from another machine. See [tools that write absolute paths](/dotsync/guides/differences/#tools-that-write-absolute-paths) |
-| `Host key verification failed` | run `ssh -T git@github.com` (or your host) once, and accept the key |
-| `Could not resolve host`, `Connection timed out` | you're offline. Local changes wait and are sent automatically later |
-| `Repository not found` | check the URL: `git -C ~/.local/share/dotsync/repo remote -v` |
+| `Could not resolve hostname`, `Connection timed out`, `Network is unreachable` | You're offline. Nothing to do: changes are sent when the remote is reachable again. |
+| `Permission denied (publickey)`, `could not read Username`, `terminal prompts disabled` | git needs a credential it can't prompt for. See [git access without prompts](/dotsync/guides/background-agent/#git-access-without-prompts). |
+| `Authentication failed`, `Invalid username or password`, error `401` or `403` | The stored credential expired or was revoked. Renew it in your credential helper. |
+| `Host key verification failed` | Connect once by hand and accept the key: `ssh -T git@github.com`, or your host. |
+| `git is configured to run /usr/bin/gh, which isn't installed on this machine` | A synced git config names a program by another machine's path. See [tools that write absolute paths](/dotsync/guides/differences/#tools-that-write-absolute-paths). |
+| `Repository not found`, `does not appear to be a git repository` | The URL is wrong, or this account can't access the repository. Check `remote` in `~/.config/dotsync/config.json`. |
 
-## `BLOCKED`
+## A file is `BLOCKED`
 
-The file now contains something that looks like a credential, so its new version isn't being sent. See [Keep secrets out](/dotsync/guides/secrets/).
+Its new version contains something that looks like a credential, so it isn't being sent. The reason is shown next to the file. Remove the secret, or mark a false positive; see [Keep secrets out](/dotsync/guides/secrets/).
 
-## `CONFLICT`
+## A file is in `CONFLICT`
 
-The file changed on this machine and on another one. See [Resolve conflicts](/dotsync/guides/resolve-conflicts/).
+It changed on this machine and on another one since they last agreed. See [Resolve conflicts](/dotsync/guides/resolve-conflicts/).
 
-## `ERROR` on an entry
+## An entry or file shows `ERROR`
+
+Everything else keeps syncing; only that entry or file is skipped. The message says why:
 
 | Message | Meaning and fix |
 |---|---|
-| `… uses $VAR, which is not set on this machine` | the entry's target uses an environment variable that isn't set here. Set it, or `dotsync exclude` the entry on this machine |
-| `… is not a plain directory (symlink or file); not syncing below it` | a directory inside a managed tree was replaced by a symlink or a file. dotsync refuses to follow it. Turn it back into a real directory, or `ignore` it |
-| `… is a dir, but the manifest says it is a file` / `… exists but is not a directory` | the local path changed type. Move it aside and run `dotsync sync` |
-| `… is larger than 10 MiB` | `dotsync set <entry> --ignore <file>` |
-| `manifest.json … is not valid JSON` | someone edited the manifest by hand. Fix it in any clone and push; nothing is changed until then |
+| `target '…' uses $VAR, which is not set on this machine` | The entry's target uses an environment variable this machine doesn't set. Set it (and run `dotsync agent install`, so the agent sees it too), or `dotsync exclude` the entry here. |
+| `… is not a plain directory (symlink or file); not syncing below it` | A directory inside a managed tree was replaced by a symlink or a file. dotsync refuses to follow it. Turn it back into a real directory, or ignore it. |
+| `… is a dir, but the manifest says it is a file` | The path changed type on this machine. Move it aside and run `dotsync sync`. |
+| `… exists but is not a directory` | The same, the other way round. |
+| `a file on one side is a directory or special file on the other` | Inside a managed directory, the same path is a file on one side and a directory, socket or similar on the other. Make them the same kind. |
+| `… is larger than 10 MiB; not syncing it` | Too big to sync. Ignore it: `dotsync set <entry> --ignore <file>`. |
+| `… changed during sync; will retry` | The file was being written while dotsync read it. It's retried on the next sync; nothing to do. |
+| `… is a broken symlink`, `… is a symlink to …, outside the home directory` | The target is a symlink dotsync can't follow. Fix or remove the link. |
+| `source overlaps '…'`, `target overlaps …` | Two entries in a hand-edited manifest overlap. Fix `manifest.json` in a clone and push. |
 
-## Nothing syncs automatically
+## `manifest.json … is not valid JSON`
+
+Someone edited the manifest by hand and broke it. No machine changes anything until it's fixed: correct it in any clone of the repository and push, and the next sync picks it up.
+
+## Nothing syncs on its own
 
 ```sh
 dotsync agent status
 ```
 
-If it isn't installed or loaded, run `dotsync agent install`. Then check `~/.local/state/dotsync/agent.log` for errors, such as `git` not being found.
+If the agent isn't installed or loaded, run `dotsync agent install`. If it is, look at its output: `~/.local/state/dotsync/agent.log` with launchd and cron, or `journalctl --user -u dotsync` with systemd. On a headless Linux machine, systemd user timers only run while you're logged in unless you [enable lingering](/dotsync/guides/background-agent/#logs-and-notifications).
 
 ## A file keeps "changing back"
 
-Some applications keep their settings in memory and write the whole file when they quit. dotsync then sees a local edit and syncs it back. Quit the application before making big changes on another machine, or look for an application setting that stores preferences separately from state.
+Some applications keep their settings in memory and write the whole file when they quit. dotsync then sees a local edit, and sends the old settings back. Quit the application before changing its settings on another machine, or look for an option that stores preferences separately from the application's state.
 
 ## Start over on one machine
 
-Your files are ordinary files, so resetting dotsync's local data is safe:
+Your files are ordinary files, so resetting dotsync's own data on a machine is safe:
 
 ```sh
-dotsync sync                                         # send any local edits first
+dotsync sync                                           # send any local edits first
 dotsync agent uninstall
-rm -rf ~/.local/share/dotsync ~/.local/state/dotsync  # also removes backups: copy out anything you need
+rm -rf ~/.local/share/dotsync ~/.local/state/dotsync   # also deletes backups: copy out anything you need
 dotsync init --keep-existing <url>
 ```
 
 With `--keep-existing`, any file that differs from the shared version becomes a conflict for you to review, instead of being replaced.
 
 <Aside>
-Still stuck? [Open an issue](https://github.com/pungoyal/dotsync/issues/new/choose) with the output of `dotsync doctor` and `dotsync status -v`, removing anything private first.
+Still stuck? [Open an issue](https://github.com/pungoyal/dotsync/issues/new/choose) with the output of `dotsync doctor` and `dotsync status -v`, with anything private removed.
 </Aside>

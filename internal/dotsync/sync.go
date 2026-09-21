@@ -362,7 +362,7 @@ func finish(c *Ctx, st *State, p *Plan, outcome, commit string) *SyncResult {
 	st.LastSync = &res.SyncSummary
 	logResult(c, res, prev)
 	if c.Quiet {
-		notifyResult(p, prev, fresh)
+		notifyResult(c, p, prev, fresh)
 	}
 	return res
 }
@@ -390,7 +390,10 @@ func logResult(c *Ctx, r *SyncResult, prev *SyncSummary) {
 }
 
 // notifyResult tells the user, once, about what needs them: a git problem, or new conflicts.
-func notifyResult(p *Plan, prev *SyncSummary, fresh []ConflictInfo) {
+func notifyResult(c *Ctx, p *Plan, prev *SyncSummary, fresh []ConflictInfo) {
+	if !c.Config.notificationsOn() {
+		return
+	}
 	if p.GitProblem != nil && (prev == nil || prev.Problem != p.GitProblem.Problem) {
 		notify("dotsync can't reach your dotfiles repository", p.GitProblem.Problem+". Run `dotsync doctor` for the fix.")
 	}

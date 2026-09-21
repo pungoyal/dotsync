@@ -1,0 +1,74 @@
+---
+/**
+ * A command's flags, generated from the flags the command defines. Flags can be written with one
+ * dash or two, and before or after arguments.
+ */
+import { command } from '../lib/reference';
+
+interface Props {
+	name: string;
+}
+
+const c = command(Astro.props.name);
+// Sentence case for the description column, as elsewhere on the site.
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+---
+
+{
+	c.flags.length === 0 ? (
+		<p>
+			<code>dotsync {c.name}</code> has no flags other than <code>-h</code>.
+		</p>
+	) : (
+		<table class="flags">
+			<thead>
+				<tr>
+					<th scope="col">Flag</th>
+					<th scope="col">Description</th>
+				</tr>
+			</thead>
+			<tbody>
+				{c.flags.map((f) => (
+					<tr>
+						<td>
+							{f.names.map((n, i) => (
+								<>
+									{i > 0 && ', '}
+									<code>
+										{n}
+										{f.value && <span class="value"> {f.value}</span>}
+									</code>
+								</>
+							))}
+						</td>
+						<td>
+							{sentence(f.usage)}
+							{f.default && (
+								<>
+									{' '}
+									<span class="meta">
+										Default <code>{f.default}</code>.
+									</span>
+								</>
+							)}
+						</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+	)
+}
+
+<style>
+	.flags td:first-child {
+		white-space: nowrap;
+		width: 1%;
+	}
+	.value {
+		color: var(--sl-color-gray-3);
+		font-style: italic;
+	}
+	.meta {
+		color: var(--sl-color-gray-3);
+	}
+</style>
