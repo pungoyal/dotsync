@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 )
 
 // boolFlag records whether a boolean flag was given at all, so "--allow-secrets=false" can be
@@ -80,10 +79,8 @@ func cmdSet(args []string, stdout, stderr io.Writer) (int, error) {
 	if len(oses) > 0 && *anyOS {
 		return 2, errors.New("--os and --any-os are mutually exclusive")
 	}
-	for _, o := range oses {
-		if o != "darwin" && o != "linux" {
-			return 2, fmt.Errorf("--os must be darwin or linux, not %q", o)
-		}
+	if err := validateOS(oses); err != nil {
+		return 2, err
 	}
 	if len(oses) > 0 {
 		list := make([]any, 0, len(oses))
@@ -183,11 +180,7 @@ func editExcludes(verb string, args []string, stdout, stderr io.Writer) (int, er
 		return 0, nil
 	}
 	code := 0
-	err = withLock(c, time.Minute, func() error {
-		st, err := loadState(c)
-		if err != nil {
-			return err
-		}
+	err = withState(c, func(st *State) error {
 		m, err := manifestWithPending(c, st)
 		if err != nil {
 			return err

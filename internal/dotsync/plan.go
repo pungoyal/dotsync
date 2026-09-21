@@ -143,7 +143,7 @@ func planEntry(c *Ctx, e *Entry, base map[string]string, adoptRemote bool) ([]*I
 	}
 	var rels []string
 	rootExists := true
-	if e.Kind == "file" {
+	if e.Kind == kindFile {
 		rels = []string{""}
 	} else {
 		if fi, err := os.Stat(root); err == nil && !fi.IsDir() {
@@ -200,21 +200,21 @@ func planEntry(c *Ctx, e *Entry, base map[string]string, adoptRemote bool) ([]*I
 			continue
 		}
 		it.L, it.R = sigOf(lobj), sigOf(robj)
-		if e.Kind == "file" {
-			if lobj != nil && lobj.Kind != "file" {
+		if e.Kind == kindFile {
+			if lobj != nil && lobj.Kind != kindFile {
 				return nil, fmt.Errorf("%s is a %s, but the manifest says it is a file", e.TargetSpec, lobj.Kind)
 			}
-			if robj != nil && robj.Kind != "file" {
+			if robj != nil && robj.Kind != kindFile {
 				return nil, fmt.Errorf("files/%s in the repository is not a regular file", e.Source)
 			}
 		}
-		if it.L == "d" || it.L == "?" || it.R == "d" || it.R == "?" {
+		if isSpecial(it.L) || isSpecial(it.R) {
 			it.Action, it.Note = actError, "a file on one side is a directory or special file on the other"
 			continue
 		}
-		it.Action = decide(it.L, it.R, it.B, e.Kind == "dir", rootExists, adoptRemote)
+		it.Action = decide(it.L, it.R, it.B, e.Kind == kindDir, rootExists, adoptRemote)
 		if it.Action == actUpload && !e.AllowSecrets {
-			if lobj != nil && lobj.Kind == "file" && lobj.Data == nil {
+			if lobj != nil && lobj.Kind == kindFile && lobj.Data == nil {
 				if lobj, err = readObj(lp); err != nil { // cached answer: fetch content for the scan
 					it.Action, it.Note = actError, err.Error()
 					continue
@@ -299,11 +299,14 @@ func resolveEntries(c *Ctx, p *Plan) {
 		e.RepoPath = filepath.Join(c.Paths.Repo, filesDir, filepath.FromSlash(e.Source))
 		if e.Kind == "" {
 			if fi, err := os.Lstat(e.RepoPath); err == nil {
-				e.Kind = map[bool]string{true: "dir", false: "file"}[fi.IsDir()]
+				e.Kind = kindFile
+				if fi.IsDir() {
+					e.Kind = kindDir
+				}
 			} else if fi, err := os.Stat(t); err == nil && fi.IsDir() {
-				e.Kind = "dir"
+				e.Kind = kindDir
 			} else {
-				e.Kind = "file"
+				e.Kind = kindFile
 			}
 		}
 		p.Entries = append(p.Entries, e)

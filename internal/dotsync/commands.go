@@ -160,6 +160,17 @@ func withLock(c *Ctx, wait time.Duration, fn func() error) error {
 	return fn()
 }
 
+// withState runs fn holding the lock, with this machine's state loaded.
+func withState(c *Ctx, fn func(st *State) error) error {
+	return withLock(c, time.Minute, func() error {
+		st, err := loadState(c)
+		if err != nil {
+			return err
+		}
+		return fn(st)
+	})
+}
+
 func newOpID() string { return time.Now().Format("20060102150405") + "-" + randSuffix() }
 
 // ---------------------------------------------------------------- sync
@@ -272,7 +283,7 @@ func cmdSync(args []string, stdout, stderr io.Writer) (int, error) {
 // ---------------------------------------------------------------- add / remove / describe
 
 func defaultSource(path string) string {
-	rel := strings.TrimPrefix(homeRel(path), ".config/")
+	rel := strings.TrimPrefix(homeRel(path), xdgDefaults["XDG_CONFIG_HOME"]+"/")
 	parts := strings.Split(rel, "/")
 	if t := strings.TrimLeft(parts[0], "."); t != "" {
 		parts[0] = t
@@ -306,13 +317,7 @@ func manifestWithPending(c *Ctx, st *State) (*Manifest, error) {
 // applyOpNoFS applies an op to an in-memory manifest without touching the cache clone.
 func applyOpNoFS(c *Ctx, m *Manifest, op *Op) error {
 	if op.Op == "remove" {
-		kept := m.Entries[:0:0]
-		for _, raw := range m.Entries {
-			if rawSource(raw) != op.Source {
-				kept = append(kept, raw)
-			}
-		}
-		m.Entries = kept
+		m.remove(op.Source)
 		return nil
 	}
 	return applyOp(c, m, op)
@@ -339,21 +344,15 @@ func cmdAdd(args []string, stdout, stderr io.Writer) (int, error) {
 	if (*source != "" || *desc != "") && len(paths) > 1 {
 		return 2, errors.New("-source and -d can only be used when adding a single path")
 	}
-	for _, o := range oses {
-		if o != "darwin" && o != "linux" {
-			return 2, fmt.Errorf("-os must be darwin or linux, not %q", o)
-		}
+	if err := validateOS(oses); err != nil {
+		return 2, err
 	}
 	c, err := newCtx(true, false, stdout, stderr)
 	if err != nil {
 		return 1, err
 	}
 	code := 0
-	err = withLock(c, time.Minute, func() error {
-		st, err := loadState(c)
-		if err != nil {
-			return err
-		}
+	err = withState(c, func(st *State) error {
 		m, err := manifestWithPending(c, st)
 		if err != nil {
 			return err
@@ -372,9 +371,9 @@ func cmdAdd(args []string, stdout, stderr io.Writer) (int, error) {
 			if err != nil {
 				return fmt.Errorf("%s: %w", arg, err)
 			}
-			kind := "file"
+			kind := kindFile
 			if fi.IsDir() {
-				kind = "dir"
+				kind = kindDir
 			} else if !fi.Mode().IsRegular() {
 				return fmt.Errorf("%s: only regular files and directories can be managed", arg)
 			}
@@ -399,7 +398,7 @@ func cmdAdd(args []string, stdout, stderr io.Writer) (int, error) {
 			real, _ := filepath.EvalSymlinks(path)
 			if *allowSecrets {
 				entry["allow_secrets"] = true
-			} else if kind == "file" {
+			} else if kind == kindFile {
 				o, err := readObj(real)
 				if err != nil {
 					return err
@@ -464,11 +463,7 @@ func findEntry(c *Ctx, m *Manifest, needle string) map[string]any {
 
 func queueOps(c *Ctx, needles []string, noSync bool, mk func(raw map[string]any) (*Op, string)) (int, error) {
 	code := 0
-	err := withLock(c, time.Minute, func() error {
-		st, err := loadState(c)
-		if err != nil {
-			return err
-		}
+	err := withState(c, func(st *State) error {
 		m, err := manifestWithPending(c, st)
 		if err != nil {
 			return err
@@ -646,7 +641,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 	info := map[string]any{
 		"host": hostname(), "remote": c.Config.Remote, "branch": c.Config.Branch,
 		"remote_commit": short(p.BaseCommit), "last_sync": st.LastSync, "pending_ops": st.PendingOps,
-		"conflicts": st.Conflicts, "agent": agentStatus(c), "entries": rows,
+		"conflicts": st.Conflicts, "agent": agentStatus(), "entries": rows,
 	}
 	if *asJSON {
 		b, _ := json.MarshalIndent(info, "", "  ")
@@ -667,7 +662,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 	} else {
 		fmt.Fprintln(w, "last sync: never")
 	}
-	fmt.Fprintf(w, "automatic sync: %s\n", agentStatus(c))
+	fmt.Fprintf(w, "automatic sync: %s\n", agentStatus())
 	if len(st.PendingOps) > 0 {
 		var ops []string
 		for _, op := range st.PendingOps {
@@ -682,7 +677,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	w1, w2, w3 := len("SOURCE"), len("TARGET"), len("STATUS")
 	for i := range rows {
-		if rows[i].Type == "dir" {
+		if rows[i].Type == kindDir {
 			rows[i].Target += "/"
 		}
 		w1 = max(w1, len(rows[i].Source))
@@ -696,7 +691,7 @@ func cmdStatus(args []string, stdout, stderr io.Writer) (int, error) {
 		if r.Note != "" {
 			fmt.Fprintf(w, "%s↳ %s\n", pad, r.Note)
 		}
-		if r.Type == "dir" || *verbose {
+		if r.Type == kindDir || *verbose {
 			for _, it := range r.Items {
 				line := fmt.Sprintf("%s- %s: %s", pad, it.Path, it.Action)
 				if it.Note != "" {
@@ -775,7 +770,7 @@ func textLines(o *Obj) ([]string, bool) {
 	if o == nil {
 		return nil, true
 	}
-	if o.Kind == "link" {
+	if o.Kind == kindLink {
 		return []string{"symlink -> " + string(o.Data)}, true
 	}
 	for _, b := range o.Data {
@@ -801,11 +796,7 @@ func cmdDiff(args []string, stdout, stderr io.Writer) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	return 0, withLock(c, time.Minute, func() error {
-		st, err := loadState(c)
-		if err != nil {
-			return err
-		}
+	return 0, withState(c, func(st *State) error {
 		p, err := buildPlan(c, st, *fetch)
 		if err != nil {
 			return err
@@ -854,11 +845,7 @@ func cmdResolve(args []string, stdout, stderr io.Writer) (int, error) {
 		return 1, err
 	}
 	code := 0
-	err = withLock(c, time.Minute, func() error {
-		st, err := loadState(c)
-		if err != nil {
-			return err
-		}
+	err = withState(c, func(st *State) error {
 		p, err := buildPlan(c, st, true)
 		if err != nil {
 			return err

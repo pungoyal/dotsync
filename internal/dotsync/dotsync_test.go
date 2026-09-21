@@ -755,6 +755,18 @@ const sopsJSON = `{
 
 const ageArmored = "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOQ==\n-----END AGE ENCRYPTED FILE-----\n"
 
+// formatKind names what cipherFormatOf found, in the terms the test table uses.
+func formatKind(data []byte) string {
+	switch f := cipherFormatOf(data); {
+	case f == nil:
+		return ""
+	case f.values == nil:
+		return "age" // entirely ciphertext
+	default:
+		return "sops" // encrypted values
+	}
+}
+
 func TestEncryptedFiles(t *testing.T) {
 	w := newWorld(t)
 	w.machine("alpha").activate()
@@ -786,8 +798,8 @@ func TestEncryptedFiles(t *testing.T) {
 		{".config/mise/.env.json", `{"API_KEY": "abc"}`, "", true},
 	} {
 		o := file(c.content)
-		if got := encryption(o.Data); got != c.enc {
-			t.Errorf("encryption(%s) = %q, want %q", c.rel, got, c.enc)
+		if got := formatKind(o.Data); got != c.enc {
+			t.Errorf("format of %s = %q, want %q", c.rel, got, c.enc)
 		}
 		if got := secretReason(filepath.Join(h, c.rel), o); (got != "") != c.blocked {
 			t.Errorf("secretReason(%s) = %q, want blocked=%v", c.rel, got, c.blocked)
@@ -1313,5 +1325,19 @@ func TestDiagnoseSyncedCredentialHelper(t *testing.T) {
 	}
 	if !strings.Contains(gp.Fix, "helper = !gh auth git-credential") {
 		t.Errorf("fix = %q", gp.Fix)
+	}
+}
+
+func TestAgentDefinitionIgnoresCapturedPath(t *testing.T) {
+	a := "<key>PATH</key><string>/a/bin:/usr/bin</string><key>HOME</key><string>/h</string>"
+	b := "<key>PATH</key><string>/b/bin:/usr/bin:/bin</string><key>HOME</key><string>/h</string>"
+	if !sameDefinition(a, b) {
+		t.Error("definitions differing only in PATH should match")
+	}
+	if sameDefinition(a, strings.Replace(b, "/h", "/other", 1)) {
+		t.Error("a different HOME is a real difference")
+	}
+	if !sameDefinition("*/5 * * * * PATH=/a:/b HOME=/h dotsync", "*/5 * * * * PATH=/c HOME=/h dotsync") {
+		t.Error("cron lines differing only in PATH should match")
 	}
 }
