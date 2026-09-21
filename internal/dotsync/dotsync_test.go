@@ -696,6 +696,8 @@ func TestSecretRules(t *testing.T) {
 		".config/app/my-secrets.json": true, ".zsh_history": true, ".env": true,
 		".gnupg/gpg.conf": false, ".gnupg/gpg-agent.conf": false, ".config/secretive/config": false,
 		".ssh/config": false, ".config/fish/config.fish": false,
+		".config/mise/age.txt": true, ".config/sops/age/keys.txt": true,
+		"Library/Application Support/sops/age/keys.txt": true, ".config/mise/config.toml": false,
 	}
 	for rel, want := range paths {
 		if got := secretPathReason(filepath.Join(h, rel)) != ""; got != want {
@@ -711,6 +713,8 @@ func TestSecretRules(t *testing.T) {
 		"set -gx EDITOR nvim":                                                 false,
 		"max_tokens: 4096":                                                    false,
 		"api_key = sk-" + strings.Repeat("x", 30) + " # dotsync:allow-secret": false,
+		fakeAgeKey: true,
+		"# public key: age1" + strings.Repeat("q", 58): false,
 	}
 	for line, want := range content {
 		if got := secretContentReason([]byte(line)) != ""; got != want {
@@ -752,6 +756,8 @@ func TestSchedulerHelpers(t *testing.T) {
 
 // Built at runtime so secret scanners don't flag the test fixture itself.
 var fakeAWSKey = "AKIA" + strings.Repeat("Z", 16)
+
+var fakeAgeKey = "AGE-SECRET-KEY-1" + strings.Repeat("Q", 58)
 
 func TestGlobNonASCII(t *testing.T) {
 	for _, c := range []struct {

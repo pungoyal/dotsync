@@ -77,6 +77,7 @@ export default defineConfig({
 						{ label: 'Per-OS and per-machine differences', slug: 'guides/differences' },
 						{ label: 'Restore a previous version', slug: 'guides/restore' },
 						{ label: 'Migrate from another tool', slug: 'guides/migrate' },
+						{ label: 'Use with mise', slug: 'guides/mise' },
 						{ label: 'The background agent', slug: 'guides/background-agent' },
 						{ label: 'Troubleshooting', slug: 'guides/troubleshooting' },
 						{ label: 'Uninstall', slug: 'guides/uninstall' },

@@ -17,6 +17,7 @@ var secretPaths = []string{
 	".aws/credentials", ".aws/sso/*", ".azure/*", ".config/gcloud/*", ".kube/config", ".docker/config.json",
 	".netrc", ".git-credentials", ".pgpass", ".vault-token", ".config/gh/hosts.yml", ".local/share/keyrings/*",
 	".env", ".env.*", "*.env", "*secret*", "*credential*", ".*history",
+	".config/mise/age.txt", ".config/sops/age/*", "library/application support/sops/age/*",
 }
 
 type secretRule struct {
@@ -28,6 +29,7 @@ type secretRule struct {
 // allowMarker is exempt, for known false positives.
 var secretContent = []secretRule{
 	{"private key", regexp.MustCompile(`-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)},
+	{"private age key", regexp.MustCompile(`AGE-SECRET-KEY-1[02-9AC-HJ-NP-Z]{58}`)},
 	{"AWS access key", regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`)},
 	{"GitHub token", regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})`)},
 	{"GitLab token", regexp.MustCompile(`\bglpat-[A-Za-z0-9_-]{20,}`)},
