@@ -1,64 +1,146 @@
 ---
 title: The background agent
-description: How dotsync syncs automatically with launchd, systemd or cron, and how to make git work unattended.
+description: How dotsync syncs on its own with launchd, systemd or cron, what exactly it installs, how light it is, and how to give git access without prompts.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import ref from '../../../data/reference.json';
 
-`dotsync init` installs a scheduled job that runs `dotsync sync -q` every five minutes. There's no long-running daemon: the job starts, syncs, and exits.
+`dotsync init` installs a scheduled job that runs `dotsync sync -q` every {ref.defaults.interval} seconds. There's no long-running daemon: each run starts, syncs, and exits. `-q` makes it silent, makes it exit at once if another sync is already running, and turns on [desktop notifications](#logs-and-notifications).
 
 | Platform | Mechanism | Defined in |
 |---|---|---|
-| macOS | launchd user agent `io.github.dotsync` | `~/Library/LaunchAgents/io.github.dotsync.plist` |
-| Linux with systemd | user timer `dotsync.timer` | `~/.config/systemd/user/dotsync.{service,timer}` |
-| Linux without systemd | crontab line tagged `# dotsync-agent` | your user crontab |
+| macOS | launchd user agent `{ref.defaults.agent_label}` | `~/Library/LaunchAgents/{ref.defaults.agent_label}.plist` |
+| Linux with a systemd user session | user timer `dotsync.timer` | `~/.config/systemd/user/dotsync.service` and `dotsync.timer` |
+| Linux without one | a crontab line tagged `{ref.defaults.cron_tag}` | your user crontab |
 
-It also runs at login (macOS) or one minute after boot (systemd). The systemd timer catches up on runs missed while the machine was asleep.
+The job also runs when it's loaded, which on macOS includes every login, and on systemd one minute after boot. Neither launchd nor systemd wakes a sleeping machine for it; syncing resumes when the machine wakes.
 
 ```sh
-dotsync agent status       # installed? loaded?
-dotsync agent install      # (re)install, e.g. after changing the interval
+dotsync agent status       # installed? loaded? running?
+dotsync agent install      # install, or re-install after a change
 dotsync agent uninstall
 ```
 
-## Resource use
+## What gets installed
 
-The agent is built to be invisible on a laptop battery and predictable in what it does.
+<Tabs>
+<TabItem label="launchd (macOS)">
 
-**When nothing changed**, which is almost every run, a sync:
+```xml title="~/Library/LaunchAgents/io.github.dotsync.plist (abridged)"
+<key>ProgramArguments</key>
+<array>
+  <string>/Users/you/.local/bin/dotsync</string>
+  <string>sync</string>
+  <string>-q</string>
+</array>
+<key>StartInterval</key><integer>300</integer>
+<key>RunAtLoad</key><true/>
+<key>ProcessType</key><string>Background</string>
+<key>LowPriorityIO</key><true/>
+<key>LowPriorityBackgroundIO</key><true/>
+<key>Nice</key><integer>10</integer>
+<key>StandardOutPath</key><string>/Users/you/.local/state/dotsync/agent.log</string>
+<key>StandardErrorPath</key><string>/Users/you/.local/state/dotsync/agent.log</string>
+<key>EnvironmentVariables</key>
+<dict>
+  <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:…</string>
+  <key>HOME</key><string>/Users/you</string>
+</dict>
+```
 
-- takes about 60–70 ms, and runs 2 `git` processes (`fetch` and `rev-parse`)
-- **writes nothing to disk**: no log line, no state rewrite (only the state file's timestamp is touched), no git index, reflog or `FETCH_HEAD` writes
-- re-reads **no file contents**: files whose size, modification time, change time, inode and mode are unchanged are recognised from a cache. As in git, files modified in the last two seconds are always re-read.
+</TabItem>
+<TabItem label="systemd (Linux)">
 
-**Priority:** it runs at background priority. On macOS that means launchd `ProcessType Background`, low-priority I/O and `Nice 10`. On Linux it means the `idle` CPU and I/O scheduling classes. It uses a single OS thread with a 64 MiB soft memory limit, and its peak memory is about 16 MiB for the fraction of a second it runs.
+```ini title="~/.config/systemd/user/dotsync.service"
+[Unit]
+Description=dotsync: synchronize dotfiles
+After=network-online.target
 
-**No randomness:**
+[Service]
+Type=oneshot
+Environment=PATH=/home/you/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/you
+ExecStart=/home/you/.local/bin/dotsync sync -q
+Nice=10
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+```
 
-- Syncs run on a fixed interval.
-- The systemd timer has `RandomizedDelaySec=0`, with a fixed 1-minute accuracy window so systemd can batch the wake-up with others.
-- launchd never wakes a sleeping Mac for it. A run missed during sleep happens once on wake.
-- Housekeeping runs on a fixed calendar instead of whenever git decides:
-  - backups are pruned at most once a day
-  - the cache clone gets a full reset at least once a day, and `git gc` once a week
-  - git's own automatic gc and maintenance are turned off
-- Push retries after another machine pushes first happen immediately, with no random back-off.
+```ini title="~/.config/systemd/user/dotsync.timer"
+[Unit]
+Description=dotsync: periodic dotfile sync
 
-## Updates
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=300s
+Persistent=true
+# A fixed schedule: no random delay. The 1-minute accuracy window lets systemd batch
+# this wake-up with others (fewer CPU wake-ups) at a fixed per-machine offset.
+RandomizedDelaySec=0
+AccuracySec=1min
 
-`dotsync update` and the install script both re-install the agent after replacing the binary, so its schedule, priority and environment always match the version you run. `dotsync doctor` warns if the agent's definition was written by an older version (`dotsync agent install` fixes it).
+[Install]
+WantedBy=timers.target
+```
+
+</TabItem>
+<TabItem label="cron (Linux)">
+
+```text title="crontab -l"
+*/5 * * * * PATH=/home/you/.local/bin:/usr/bin:/bin HOME=/home/you /home/you/.local/bin/dotsync sync -q >>/home/you/.local/state/dotsync/agent.log 2>&1 # dotsync-agent
+```
+
+cron counts in whole minutes: an interval is rounded down to minutes (at least one), intervals of an hour or more run every whole number of hours, and a day or more runs daily at midnight.
+
+</TabItem>
+</Tabs>
+
+The job runs `~/.local/bin/dotsync`, the copy `init` installs, or the binary you ran `agent install` with if that copy doesn't exist.
+
+## The job's environment
+
+launchd and cron don't read your shell's configuration, so dotsync writes the environment into the job itself when it installs it:
+
+- `PATH`: the directories of the `PATH` you ran `dotsync` from, followed by `/usr/bin` and `/bin`, so the job finds the same `git`, `ssh` and credential helpers as your shell
+- `HOME`
+- `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_CACHE_HOME`, if you've set them
+
+If you move `git`, or change any of these, run `dotsync agent install` again.
+
+## Keeping it current
+
+`dotsync update` and the install script re-install the agent after replacing the binary, so its schedule, priority and environment always match the version you run. `dotsync doctor` warns when the installed definition was written by a different version (`dotsync agent install` fixes it). A different `PATH` alone doesn't count.
 
 ## Change the interval
 
-Set `interval` (in seconds) in `~/.config/dotsync/config.json`, then run `dotsync agent install`. With cron the interval is rounded to whole minutes.
+Set `interval` (in seconds) in [`~/.config/dotsync/config.json`](/dotsync/reference/configuration/), then run `dotsync agent install`. Or pass `--interval` when you first run `init`.
 
-## Environment
+## Resource use
 
-launchd and cron don't read your shell configuration. So when the agent is installed, dotsync writes `PATH` (including the directory `git` was found in), `HOME` and any `XDG_*` base directories you've set into the job definition. If you move `git` or change those variables, run `dotsync agent install` again.
+The agent is built to go unnoticed on a laptop battery, and to be predictable.
+
+**When nothing changed**, which is almost every run, a sync:
+
+- runs **2 git processes**: a `fetch` and a `rev-parse`
+- **writes nothing** except the state file's modification time, which records when the last sync ran: no log line, no git index, reflog or `FETCH_HEAD`, no state rewrite
+- **reads no file contents**: a file whose size, modification time, change time, inode and mode are unchanged since dotsync last hashed it isn't read again. As in git, a file modified in the last two seconds is always re-read.
+- takes around 65 ms, most of it the network round trip of the fetch, and peaks under 10 MiB of memory
+
+A machine with a conflict or a blocked file logs that line on every sync, until you deal with it.
+
+**Priority.** On macOS the job runs as a launchd `Background` process with low-priority I/O and `Nice 10`. On systemd it uses the `idle` CPU and I/O scheduling classes and `Nice=10`. The Go runtime runs on a single CPU (`GOMAXPROCS=1`) with a 64 MiB soft memory limit.
+
+**No randomness.**
+
+- Syncs run on a fixed interval, with no random delay.
+- The systemd timer has `RandomizedDelaySec=0` and a fixed one-minute accuracy window, so systemd can batch the wake-up with others.
+- When another machine pushes first, dotsync redoes its pass straight away, with no random back-off, up to {ref.defaults.push_attempts} times.
+- Housekeeping runs on a fixed calendar, not whenever git decides: backups are pruned at most once a day, the cache clone is fully reset at least once a day, and `git gc` runs once a week. git's own automatic gc and maintenance are turned off in the cache clone.
 
 ## Git access without prompts
 
-The agent can't type passwords or passphrases. `git ls-remote <your-url>` must succeed without any prompt:
+The agent can't type passwords or passphrases, so `git ls-remote <your-url>` must succeed without any prompt. dotsync runs git with `GIT_TERMINAL_PROMPT=0`, and ssh with `BatchMode=yes` and a 15-second connection timeout (unless you set `GIT_SSH_COMMAND` yourself), so a missing credential fails fast instead of hanging.
 
 <Tabs>
 <TabItem label="SSH on macOS">
@@ -75,17 +157,21 @@ ssh-add --apple-use-keychain ~/.ssh/id_ed25519
 ```
 </TabItem>
 <TabItem label="SSH on Linux">
-systemd user services usually can't reach your desktop session's `ssh-agent`. The simplest reliable option is a **dedicated deploy key without a passphrase**, allowed to write to this one repository:
+systemd user services and cron jobs usually can't reach your desktop session's `ssh-agent`. The simplest reliable option is a **dedicated deploy key without a passphrase**, allowed to write to this one repository only:
 
 ```sh
 ssh-keygen -t ed25519 -N '' -f ~/.ssh/dotsync -C "dotsync@$(hostname)"
 ```
+Give the key its own host alias, so it's only used for this repository:
+
 ```ssh-config title="~/.ssh/config"
-Host github.com
+Host dotsync-remote
+  HostName github.com
+  User git
   IdentityFile ~/.ssh/dotsync
   IdentitiesOnly yes
 ```
-Add `~/.ssh/dotsync.pub` as a deploy key with **write access** in the repository's settings.
+Add `~/.ssh/dotsync.pub` as a deploy key **with write access** in the repository's settings, and use the alias in the URL: `dotsync init dotsync-remote:you/dotfiles.git`.
 </TabItem>
 <TabItem label="HTTPS">
 Use a credential helper, and authenticate once interactively:
@@ -93,25 +179,32 @@ Use a credential helper, and authenticate once interactively:
 ```sh
 git config --global credential.helper osxkeychain   # macOS
 git config --global credential.helper libsecret     # Linux desktop
-gh auth setup-git                                    # or let the GitHub CLI handle it
+gh auth setup-git                                    # or let the GitHub CLI do it
 ```
+
+If you use `gh auth setup-git` and sync `~/.gitconfig`, see [tools that write absolute paths](/dotsync/guides/differences/#tools-that-write-absolute-paths).
 </TabItem>
 </Tabs>
 
-Check it with `dotsync doctor`, which reaches the remote exactly as the agent does. If authentication fails, `doctor` and `dotsync status` show the exact git error, and the agent posts a desktop notification.
+Check with `dotsync doctor`, which reaches the remote exactly as the agent does. When git fails in a way you need to fix, such as a rejected key, missing credentials or an unknown host key, `doctor`, `status` and the agent's notification all name the problem and the fix.
 
 ## Logs and notifications
 
-| File | Contents |
+| Where | What |
 |---|---|
-| `~/.local/state/dotsync/sync.log` | every change, conflict and error, plus one summary line per sync (rotated at 1 MiB) |
-| `~/.local/state/dotsync/agent.log` | anything the scheduled job printed |
+| `~/.local/state/dotsync/sync.log` | every change, conflict and error, and one line for each sync that did something or whose outcome changed. Rotated to `sync.log.1` at 1 MiB |
+| `~/.local/state/dotsync/agent.log` | anything the job printed, with launchd and cron. dotsync prints nothing with `-q` unless a sync fails outright |
+| `journalctl --user -u dotsync` | the same, with systemd |
 
-The agent notifies you when a **new** conflict appears or git starts failing to authenticate. Set `DOTSYNC_NO_NOTIFY=1` to turn this off.
+The agent posts a desktop notification when **a new conflict** appears, and when **git starts failing** in a way you need to fix. It notifies once, not on every run. To turn notifications off on a machine, set `"notifications": false` in its [configuration](/dotsync/reference/configuration/); the next sync respects it. The `DOTSYNC_NO_NOTIFY` environment variable also turns them off, for runs that inherit it.
 
-- **Linux:** notifications go through `notify-send` and show the dotsync icon.
-- **macOS:** notifications appear in Notification Center. To show the dotsync icon instead of the Script Editor icon, install [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`), and dotsync uses it automatically.
+- **Linux:** through `notify-send`, with the dotsync icon.
+- **macOS:** through Notification Center, with the Script Editor icon. Install [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`) and dotsync uses it to show its own icon.
 
 <Aside type="tip" title="Headless Linux servers">
 Without lingering, systemd user timers only run while you're logged in. Enable it once with `loginctl enable-linger $USER`.
+</Aside>
+
+<Aside title="Using your own scheduler">
+`init --no-agent` skips the agent. Run `dotsync sync -q` on whatever schedule you like; overlapping runs are harmless, because a second one exits straight away.
 </Aside>

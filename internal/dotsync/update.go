@@ -237,7 +237,7 @@ func replaceBinary(src, path string) error {
 func cmdUpdate(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("update", "[--check] [--version vX.Y.Z] [--require-attestation]", stderr)
 	check := fs.Bool("check", false, "only report whether an update is available")
-	want := fs.String("version", "", "install this release instead of the latest (also allows downgrades)")
+	want := fs.String("version", "", "install release `vX.Y.Z` instead of the latest (also allows downgrades)")
 	requireAttestation := fs.Bool("require-attestation", false, "fail unless the build provenance can be verified with the GitHub CLI")
 	if _, err := parseArgs(fs, args); err != nil {
 		return 2, err

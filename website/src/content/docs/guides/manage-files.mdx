@@ -1,11 +1,34 @@
 ---
 title: Manage files and directories
-description: Add files and directories, skip what shouldn't sync, change descriptions, and stop managing things.
+description: Add files and directories, keep generated files out, change descriptions, permissions and write strategy, and stop managing things, from any machine.
 ---
 
 import { Aside, FileTree } from '@astrojs/starlight/components';
+import Terminal from '../../../components/Terminal.astro';
+import ref from '../../../data/reference.json';
 
-Everything here changes the shared **manifest**, so it applies to **every machine**, whichever machine you run it on.
+export const addDir = `
+$ dotsync add ~/.config/gh -d "GitHub CLI"
+note: 1 file(s) under ~/.config/gh look like secrets and will not be sent (e.g. hosts.yml)
+managing ~/.config/gh as 'gh'
+  sent      ~/.config/gh/config.yml
+  BLOCKED   ~/.config/gh/hosts.yml  (path looks like a secret (matches '.config/gh/hosts.yml'))
+dotsync: 1 sent, 1 blocked — pushed 0c9c9a4
+`;
+
+export const setOut = `
+$ dotsync set nvim --ignore 'spell/*.spl' --mode 0600
+updated 'nvim': mode = 0600; ignore + spell/*.spl
+dotsync: in sync (12 files) — pushed 4e1d2a7
+`;
+
+export const removeOut = `
+$ dotsync remove ~/.tmux.conf
+no longer managing ~/.tmux.conf ('tmux.conf'); local copies are left in place on every machine
+dotsync: in sync (14 files) — pushed 9a3f6b0
+`;
+
+The commands on this page change the shared **manifest**, so they apply to **every machine**, whichever machine you run them on. Each one syncs straight away, so you see the result. `add`, `remove` and `set` also accept `--no-sync`, which only queues the change for the next sync.
 
 ## Add a file
 
@@ -13,15 +36,15 @@ Everything here changes the shared **manifest**, so it applies to **every machin
 dotsync add ~/.gitconfig -d "Git identity and aliases"
 ```
 
-The file is copied into the repository and pushed. Other machines install it on their next sync, backing up any existing copy first.
+The file is copied into the repository and pushed. Every other machine installs it on its next sync, backing up any copy it already has first. (A machine set up with `init --keep-existing` reports a different existing copy as a [conflict](/dotsync/guides/resolve-conflicts/) instead.)
 
-dotsync picks the file's location in the repository (its `source`) from the path. `~/.config/fish/config.fish` becomes `fish/config.fish`, and `~/.gitconfig` becomes `gitconfig`. To choose one yourself:
+The **source**, the file's location under `files/` in the repository, comes from its path: a leading `.config/` is dropped, and so are the leading dots of what remains. `~/.gitconfig` becomes `gitconfig`, and `~/.config/fish/config.fish` becomes `fish/config.fish`. To choose one yourself:
 
 ```sh
 dotsync add ~/.config/git/config --source git/config -d "Git (XDG location)"
 ```
 
-You can add several paths at once (`dotsync add ~/.vimrc ~/.inputrc`), but `-d` and `--source` only work with a single path.
+Without `-d`, the description is the file name. You can add several paths at once, as in `dotsync add ~/.vimrc ~/.inputrc`, but `-d` and `--source` only work with a single path.
 
 ## Add a directory
 
@@ -29,52 +52,87 @@ You can add several paths at once (`dotsync add ~/.vimrc ~/.inputrc`), but `-d` 
 dotsync add ~/.config/nvim -d "Neovim" --ignore lazy-lock.json --ignore 'spell/*.spl'
 ```
 
-Directories are managed **recursively**. Files added, changed or deleted inside them are synced too. Symlinks inside are synced as symlinks, and the executable bit is kept.
+A directory is managed **recursively**: files added, changed or deleted anywhere inside it sync too. Symlinks inside it are synced as symlinks, and each file's executable bit is kept. Empty directories aren't tracked.
 
-Always skipped: `.git`, `.DS_Store`, `._*`, editor swap and backup files (`*.swp`, `*~`, `.#*`), `__pycache__` and `*.pyc`.
-
-<Aside type="tip" title="Choosing what to ignore">
-Anything that is **generated**, **machine-specific** or **large** doesn't belong in sync: plugin checkouts, caches, lock files that differ per machine, logs. A pattern matches a file's name or its path inside the directory, and a pattern that matches a directory skips everything below it.
-</Aside>
+These are always skipped: {ref.default_ignore.map((p, i) => <>{i > 0 && ', '}<code>{p}</code></>)}. The last one is the temporary file dotsync writes while replacing a file.
 
 <FileTree>
 - ~/.config/nvim/ managed as `nvim`
   - init.lua synced
   - lua/
     - plugins.lua synced
-  - lazy-lock.json ignored with `--ignore lazy-lock.json`
-  - .DS_Store always ignored
+  - lazy-lock.json skipped: `--ignore lazy-lock.json`
+  - spell/
+    - en.utf-8.spl skipped: `--ignore 'spell/*.spl'`
+  - .DS_Store always skipped
 </FileTree>
+
+### Choosing what to ignore
+
+Anything **generated**, **machine-specific** or **large** doesn't belong in sync: plugin checkouts, caches, lock files that differ per machine, logs, sockets.
+
+A pattern is matched against each file's **name** and against its **path inside the directory**, and against every directory above the file too, so a pattern that matches a directory skips everything below it. `*` also matches `/`, `?` matches one character, and `[…]` a character class. Quote patterns so your shell doesn't expand them.
+
+| Pattern | Skips |
+|---|---|
+| `lazy-lock.json` | any file or directory named `lazy-lock.json`, at any depth |
+| `spell/*.spl` | `.spl` files under `spell/` at the top of the directory |
+| `plugin` | a `plugin` directory at any depth, and everything in it |
+| `*.log` | every file whose name ends in `.log` |
+
+### Credential files inside a directory
+
+Credential files in a managed directory aren't refused. They're **held back**: never uploaded, and reported as `BLOCKED` by `sync` and `status`. `add` warns about them up front:
+
+<Terminal code={addDir} />
+
+To stop seeing them, ignore them: `dotsync set ~/.config/gh --ignore hosts.yml`. See [Keep secrets out](/dotsync/guides/secrets/).
 
 ## What can't be added
 
-- Paths **outside your home directory**, and your home directory itself
-- dotsync's own files (`~/.config/dotsync`, `~/.local/share/dotsync`, `~/.local/state/dotsync`)
-- A path **inside** an already managed directory, or a directory **containing** a managed path
-- Files larger than 10 MiB
-- Files that look like **secrets**. See [Keep secrets out](/dotsync/guides/secrets/)
+`add` refuses:
+
+- paths **outside your home directory**, and your home directory itself
+- dotsync's own directories: `~/.config/dotsync`, `~/.local/share/dotsync` and `~/.local/state/dotsync`
+- anything that isn't a regular file or a directory, such as a socket
+- a path that's already managed, unless both entries are limited to [different operating systems](/dotsync/guides/differences/#a-different-file-per-os)
+- a path **inside** a managed directory, or a directory **containing** a managed path
+- a source already used by another entry, or one that overlaps another source
+- files that look like **secrets**; see [Keep secrets out](/dotsync/guides/secrets/)
+
+If the path you add is a symlink, as in an old GNU Stow setup, dotsync keeps the link and syncs the file or directory it points to, which must also be inside your home directory. Files larger than {ref.defaults.max_file_size_mib} MiB can't be synced: `add` refuses such a file, and inside a managed directory it's reported as an error while the rest of the directory syncs normally.
 
 ## Change an entry
 
-`dotsync set` changes an entry for every machine:
+`dotsync set` changes an entry for every machine. Name the entry by its path on this machine or by its source:
 
 ```sh
 dotsync set ~/.config/nvim --ignore lazy-lock.json      # skip another file
-dotsync set ~/.config/nvim --unignore spell             # sync it again
-dotsync set ~/.ssh/config --mode 0600                   # force permissions everywhere
-dotsync set karabiner/karabiner.json --os darwin        # macOS only
+dotsync set ~/.config/nvim --unignore lazy-lock.json    # sync it again
+dotsync set ~/.ssh/config --mode 0600                   # force these permissions everywhere
+dotsync set karabiner/karabiner.json --os darwin        # manage it on macOS only
 dotsync set ~/.gitconfig -d "Git identity, aliases and signing"
 ```
 
-See [`set`](/dotsync/reference/commands/#set) for every option. `dotsync describe <entry> <text>` is a shortcut for changing the description.
+<Terminal code={setOut} />
+
+Changes are checked before anything is queued, so an invalid mode or OS is refused straight away. Ignore patterns are recorded as additions and removals, so if two machines change them at the same time, both changes survive. [`set`](/dotsync/reference/commands/#set) lists every option; `dotsync describe <entry> <text>` is a shortcut for `set <entry> -d <text>`.
+
+`set` can't change an entry's source or target. To move one, `remove` it and `add` it again.
+
+### Permissions
+
+Without `--mode`, each machine keeps its own permissions for a file, and only the **executable bit** syncs. With `--mode 0600`, every machine gives the file exactly those permissions whenever dotsync writes it there, which is what you want for files like `~/.ssh/config`. A copy that's already up to date keeps its current permissions until dotsync next writes it. `--no-mode` goes back to the default.
+
+### How files are written
+
+By default, dotsync replaces a file **atomically**: it writes a temporary file next to it and renames it into place, so no program ever sees a half-written file. A few programs track a file by its inode, and a container that bind-mounts a single file keeps seeing the old one after a rename. For those, `--write inplace` rewrites the existing file instead.
 
 ## Stop managing something
 
-```sh
-dotsync remove ~/.tmux.conf
-```
+<Terminal code={removeOut} />
 
-This stops managing the entry **on every machine**. The file itself **stays exactly where it is on every machine**. It just becomes an ordinary, unmanaged file, and later edits stay local. Its content remains in the repository's history.
+This stops managing the entry **on every machine**. The file itself stays **exactly where it is on every machine**, as an ordinary file that dotsync no longer touches. Its content stays in the repository's history.
 
 <Aside>
 To stop managing an entry on **one** machine only, run `dotsync exclude <entry>` on that machine instead. See [Per-OS and per-machine differences](/dotsync/guides/differences/#skip-an-entry-on-one-machine).
@@ -82,12 +140,12 @@ To stop managing an entry on **one** machine only, run `dotsync exclude <entry>`
 
 ## Work offline
 
-`add`, `remove` and `describe` work without a network connection. The change is queued on this machine (you'll see it under *queued, not yet pushed* in `dotsync status`) and sent on the next sync that can reach the remote.
+Every command on this page works without a network connection. The change is queued on this machine, shown as *queued, not yet pushed* by `dotsync status`, and sent by the first sync that reaches the remote. Queued changes are replayed on top of whatever the other machines pushed in the meantime, so two machines can add different files at the same moment without either change being lost.
 
 ## Edit the manifest by hand
 
-Everything above can be done with commands, but you can also edit `manifest.json` directly in any clone of your dotfiles repository and push, which is handy for bulk changes. Machines pick it up on their next sync. See the [manifest reference](/dotsync/reference/manifest/) for every field.
+You can also edit `manifest.json` directly in any clone of your dotfiles repository, commit and push. That's handy for bulk changes. Machines pick the change up on their next sync. The [manifest reference](/dotsync/reference/manifest/) lists every field.
 
 <Aside type="caution">
-Don't edit the cache clone in `~/.local/share/dotsync/repo`. It belongs to dotsync, which resets it whenever it needs to. Use a separate clone.
+Use your own clone, not dotsync's cache clone in `~/.local/share/dotsync/repo`. dotsync resets that one whenever it needs to, discarding anything you changed there.
 </Aside>

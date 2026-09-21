@@ -14,21 +14,25 @@ const states = [
 	<div class="controls">
 		<fieldset>
 			<legend>On <strong>this machine</strong>, since the last sync the file was…</legend>
-			{states.map((s, i) => (
-				<label>
-					<input type="radio" name="local" value={s.id} checked={i === 1} />
-					<span>{s.label}</span>
-				</label>
-			))}
+			<div class="options">
+				{states.map((s, i) => (
+					<label>
+						<input type="radio" name="local" value={s.id} checked={i === 1} />
+						<span>{s.label}</span>
+					</label>
+				))}
+			</div>
 		</fieldset>
 		<fieldset>
-			<legend>On <strong>another machine</strong> (already pushed), it was…</legend>
-			{states.map((s, i) => (
-				<label>
-					<input type="radio" name="remote" value={s.id} checked={i === 0} />
-					<span>{s.label}</span>
-				</label>
-			))}
+			<legend>On <strong>another machine</strong>, which already pushed, it was…</legend>
+			<div class="options">
+				{states.map((s, i) => (
+					<label>
+						<input type="radio" name="remote" value={s.id} checked={i === 0} />
+						<span>{s.label}</span>
+					</label>
+				))}
+			</div>
 		</fieldset>
 	</div>
 	<div class="result" aria-live="polite" data-kind="out">
@@ -50,7 +54,7 @@ const states = [
 		'same/del': {
 			kind: 'in', verdict: 'Removed here (after a backup)',
 			detail: 'A file deleted inside a managed directory is deleted on every machine. Each machine backs it up first.',
-			fine: 'For a single-file entry the file is restored instead; to stop managing it, use dotsync remove.',
+			fine: 'A single-file entry can’t be deleted this way: this machine sends its copy back to the repository. To stop managing a file, use dotsync remove.',
 		},
 		'edit/same': {
 			kind: 'out', verdict: 'Sent to every machine',
@@ -58,21 +62,21 @@ const states = [
 		},
 		'edit/edit': {
 			kind: 'conflict', verdict: 'Conflict: nothing is touched',
-			detail: 'Both machines changed the file. dotsync keeps both versions exactly as they are and asks you to choose with dotsync resolve.',
-			fine: 'If both edits happen to be identical, there is nothing to resolve.',
+			detail: 'Both machines changed the file. dotsync leaves both versions exactly as they are, and you choose with dotsync resolve.',
+			fine: 'If both edits happen to be identical, there’s nothing to resolve.',
 		},
 		'edit/del': {
 			kind: 'out', verdict: 'Your edit wins, and the file comes back',
-			detail: 'A modification always beats a deletion, so no work is lost. The edited version is pushed and restored on every machine.',
+			detail: 'A change always beats a deletion, so no work is lost. The edited version is pushed, and the other machines install it again.',
 		},
 		'del/same': {
 			kind: 'out', verdict: 'Deleted everywhere (after backups)',
 			detail: 'Inside a managed directory, your deletion propagates. Every other machine backs the file up before removing it.',
-			fine: 'If the whole directory is missing or empty, or it is a single-file entry, dotsync restores it instead of deleting it everywhere.',
+			fine: 'If the whole directory is missing or empty, or it’s a single-file entry, dotsync restores the file here instead of deleting it everywhere.',
 		},
 		'del/edit': {
 			kind: 'in', verdict: 'Their edit wins, and the file comes back',
-			detail: 'A modification always beats a deletion. The edited version is restored on this machine.',
+			detail: 'A change always beats a deletion. The edited version is installed here again.',
 		},
 		'del/del': { kind: 'ok', verdict: 'Nothing to do', detail: 'Both sides deleted it, so dotsync simply forgets the file.' },
 	};
@@ -95,41 +99,59 @@ const states = [
 
 <style>
 	.explorer {
-		border: 1px solid var(--ds-card-border);
-		border-radius: 0.9rem;
-		padding: 1.25rem;
+		border: 1px solid var(--ds-border);
+		border-radius: var(--ds-radius);
+		padding: 1.25rem 1.35rem 1.35rem;
 		margin-block: 1.5rem;
-		background: color-mix(in srgb, var(--sl-color-gray-6) 50%, transparent);
+		background: var(--ds-surface);
 	}
-	.controls { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+	.controls { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
 	fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 	legend { font-size: 0.9rem; color: var(--sl-color-gray-2); margin-bottom: 0.6rem; }
-	label { display: inline-flex; margin: 0 0.4rem 0.4rem 0; cursor: pointer; }
+	legend strong { color: var(--sl-color-white); }
+	.options {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		padding: 0.25rem;
+		border: 1px solid var(--ds-border);
+		border-radius: 999px;
+		background: var(--sl-color-black);
+	}
+	label { display: inline-flex; cursor: pointer; }
 	input { position: absolute; opacity: 0; pointer-events: none; }
 	label span {
-		padding: 0.35rem 0.85rem;
+		min-height: 2rem;
+		display: inline-flex;
+		align-items: center;
+		padding: 0 0.9rem;
 		border-radius: 999px;
-		border: 1px solid var(--sl-color-gray-5);
-		font-size: 0.9rem;
-		transition: background-color 120ms, border-color 120ms, color 120ms;
+		font-size: 0.875rem;
+		color: var(--sl-color-gray-2);
+		transition: background-color 120ms, color 120ms;
 	}
-	label:hover span { border-color: var(--sl-color-accent); }
-	input:checked + span { background: var(--sl-color-accent); border-color: var(--sl-color-accent); color: var(--sl-color-black); font-weight: 600; }
-	input:focus-visible + span { outline: 2px solid var(--sl-color-accent-high); outline-offset: 2px; }
+	label:hover span { color: var(--sl-color-white); }
+	input:checked + span { background: var(--sl-color-accent); color: var(--sl-color-black); font-weight: 600; }
+	:root[data-theme='light'] input:checked + span { color: #ffffff; }
+	input:focus-visible + span { outline: 2px solid var(--sl-color-accent); outline-offset: 2px; }
 	.result {
-		margin-top: 1.1rem;
-		padding: 1rem 1.1rem;
-		border-radius: 0.7rem;
-		border-left: 4px solid var(--kind);
-		background: color-mix(in srgb, var(--kind) 10%, transparent);
+		margin-top: 1.25rem;
+		padding: 1rem 1.15rem;
+		border-radius: var(--ds-radius-sm);
+		border: 1px solid color-mix(in oklab, var(--kind) 35%, transparent);
+		border-inline-start: 4px solid var(--kind);
+		background: color-mix(in oklab, var(--kind) 9%, transparent);
 	}
 	.result[data-kind='ok'] { --kind: var(--ds-ok); }
 	.result[data-kind='in'] { --kind: var(--ds-in); }
 	.result[data-kind='out'] { --kind: var(--ds-out); }
 	.result[data-kind='conflict'] { --kind: var(--ds-conflict); }
-	.verdict { font-weight: 700; font-size: 1.05rem; color: var(--sl-color-white); margin: 0; }
-	.dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--kind); margin-right: 0.5rem; }
-	.detail { margin: 0.35rem 0 0; color: var(--sl-color-gray-1); }
-	.fine { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--sl-color-gray-3); }
+	.verdict { display: flex; align-items: center; font-weight: 700; font-size: 1.05rem; color: var(--sl-color-white); margin: 0; }
+	.dot { display: inline-block; flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--kind); margin-right: 0.55rem; }
+	.detail { margin: 0.35rem 0 0; color: var(--sl-color-gray-1); text-wrap: pretty; }
+	.fine { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--sl-color-gray-3); text-wrap: pretty; }
 	.fine:empty { display: none; }
+	@media (forced-colors: active) {
+		input:checked + span { outline: 2px solid Highlight; }
+	}
 </style>

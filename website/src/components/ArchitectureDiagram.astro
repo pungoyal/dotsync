@@ -7,8 +7,8 @@
 		<title id="arch-t">What is shared and what stays on each machine</title>
 		<desc id="arch-d">
 			A shared private git repository holds manifest.json and files. Each machine fetches from it and pushes one-sided local
-			changes to it. Each machine keeps its real files, a disposable cache clone, a state file with the base of every
-			managed file, backups, and its own configuration. None of these are synced.
+			changes to it. Each machine keeps its real files, a disposable cache clone of the repository, a state file with the base
+			of every managed file, backups, and its own configuration. None of these are synced.
 		</desc>
 		<defs>
 			<marker id="arch-a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -38,7 +38,7 @@
 			<text x="676" y="220" class="note" text-anchor="end">nothing here is synced</text>
 			<g class="rows">
 				<text x="44" y="256" class="k">your real files</text><text x="230" y="256" class="mono">~/.gitconfig, ~/.config/nvim/…</text>
-				<text x="44" y="284" class="k">cache clone</text><text x="230" y="284" class="mono">~/.local/share/dotsync/repo</text><text x="560" y="284" class="note">reset every sync</text>
+				<text x="44" y="284" class="k">cache clone</text><text x="230" y="284" class="mono">~/.local/share/dotsync/repo</text><text x="560" y="284" class="note">disposable</text>
 				<text x="44" y="312" class="k">state</text><text x="230" y="312" class="mono">~/.local/state/dotsync/state.json</text><text x="560" y="312" class="note">the base of every file</text>
 				<text x="44" y="340" class="k">backups</text><text x="230" y="340" class="mono">~/.local/state/dotsync/backups/</text>
 				<text x="44" y="368" class="k">machine config</text><text x="230" y="368" class="mono">~/.config/dotsync/config.json</text>
@@ -51,8 +51,8 @@
 	.arch { margin-block: 1.5rem; }
 	svg { width: 100%; height: auto; display: block; font-family: var(--sl-font); }
 	rect { stroke-width: 1.5; }
-	.repo rect { fill: color-mix(in srgb, var(--sl-color-accent) 12%, transparent); stroke: var(--sl-color-accent); }
-	.machine rect { fill: color-mix(in srgb, var(--sl-color-gray-6) 60%, transparent); stroke: var(--sl-color-gray-5); }
+	.repo rect { fill: color-mix(in oklab, var(--sl-color-accent) 10%, var(--ds-surface)); stroke: var(--sl-color-accent); }
+	.machine rect { fill: var(--ds-surface); stroke: var(--ds-border-strong); }
 	.h { font-size: 15px; font-weight: 700; fill: var(--sl-color-white); }
 	.mono { font-family: var(--sl-font-mono); font-size: 13px; fill: var(--sl-color-gray-1); }
 	.note { font-size: 12.5px; fill: var(--sl-color-gray-3); }

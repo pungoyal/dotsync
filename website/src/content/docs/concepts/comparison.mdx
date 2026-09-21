@@ -1,37 +1,37 @@
 ---
 title: Comparison with other tools
-description: How dotsync compares with chezmoi, yadm, GNU Stow and Mackup, and when to choose each.
+description: How dotsync compares with chezmoi, yadm, GNU Stow, Mackup and mise, when to choose each, and how to use them together.
 ---
 
-There are many good dotfile tools. They solve different problems, so here's an honest comparison.
+There are many good dotfile tools, and they solve different problems. Here's an honest comparison.
 
 ## At a glance
 
-| | dotsync | chezmoi | yadm | GNU Stow | Mackup |
-|---|---|---|---|---|---|
-| **Model** | two-way sync | source → apply | git work tree in `$HOME` | symlink farm | symlinks into a cloud folder |
-| Edit the real file | ✅ | via `chezmoi edit` / `re-add` | ✅ | ✅ (a symlink) | ✅ (a symlink) |
-| Syncs automatically | ✅ both ways | ❌ manual `apply` / `update` | ❌ manual git | ❌ | via the cloud client |
-| Per-file conflict detection | ✅ | ❌ (git merge) | ❌ (git merge) | ❌ | ❌ (cloud "conflicted copy") |
-| Backup before overwrite | ✅ always | on request | ❌ | ❌ | ❌ |
-| Keeps secrets out | ✅ blocks | encryption, password managers | encryption | ❌ | ❌ |
-| Templates per machine | ❌ | ✅ | ✅ (alternates, templates) | ❌ | ❌ |
-| Windows | ❌ | ✅ | ❌ | ❌ | ❌ |
+| | dotsync | chezmoi | yadm | GNU Stow | Mackup | mise dotfiles |
+|---|---|---|---|---|---|---|
+| **Model** | two-way sync | source state, applied to your home | your home is a git work tree | symlinks into a directory | copies to and from a cloud-storage folder | files linked, copied or templated from a source, or tracked in place with git history |
+| **You edit** | the real file | the source, or the file then `chezmoi re-add` | the real file | the real file, through its symlink | the real file | the real file, or the source for copied and templated files |
+| **Other machines get changes** | automatically | when you run `chezmoi update` | when you run `yadm pull` | when you pull the directory | when you run `mackup restore` | automatically with the history watcher and `history.sync = "sync"`, otherwise when you run `mise dot sync` |
+| **Same file changed on two machines** | per-file conflict: both kept, you choose | git merge conflict in the source; asks before overwriting a file changed since the last apply | git merge conflict | git merge conflict, if the directory is a git repository | whatever the storage provider does | per-file conflict, but sync pauses for every tracked file until you choose |
+| **Secrets** | held back before upload | templates that read password managers; encryption | encryption | not handled | not handled | encryption; credential files skipped by name |
+| **Differences per machine** | per-OS entries, per-machine exclusions | templates | alternate files, templates | separate packages | not handled | templates, per-OS and per-profile variants |
 
 ## When to choose which
 
-**Choose dotsync** if you want files to simply be the same on every Mac and Linux machine, edited anywhere and synced without ceremony, and you'd rather be told about a conflict than have one resolved for you.
+**Choose dotsync** if you want your files to simply be the same on every Mac and Linux machine, edited anywhere and synced without ceremony, with every replaced file backed up, and you'd rather be told about a conflict than have one resolved for you.
 
-**Choose chezmoi** if machines need genuinely different renderings of the same file (templates, per-host data, secrets from password managers), if you use Windows, or if you prefer an explicit apply step.
+**Choose chezmoi** if machines need genuinely different versions of the same file (templates, per-host data, secrets pulled from password managers), if you use Windows, or if you prefer an explicit apply step.
 
 **Choose yadm** if you like working with git directly and want your home directory to *be* the repository.
 
 **Choose GNU Stow** if you want the smallest possible tool, you're happy running it by hand, and your applications don't replace symlinks.
 
-**Choose Mackup** if you mainly want to back up application settings to a cloud folder, especially macOS app preferences.
+**Choose mise's dotfiles** if you already use mise to set up machines (packages, services, tools) and want dotfiles in the same configuration, with templates and a full edit history you can roll back. Its two-way sync needs the history watcher and `history.sync = "sync"`. It doesn't scan contents for secrets, so encrypt anything sensitive before its first save. See [mise's dotfiles docs](https://mise.jdx.dev/dotfiles.html).
+
+**Choose Mackup** if you mainly want to back up and restore application settings, especially macOS application preferences, through a folder in your cloud storage.
 
 ## Using them together
 
-dotsync only touches the files in its manifest, so it coexists with other tools as long as they don't manage the **same** files. A common setup is dotsync for everyday config and chezmoi for a few heavily templated files.
+dotsync only touches the files in its manifest, so it coexists with other tools as long as they don't manage the **same** files. A common setup is dotsync for everyday configuration, and chezmoi for a few heavily templated files. If you use both dotsync and mise, see [Use with mise](/dotsync/guides/mise/#mises-own-dotfiles).
 
 Moving over? See [Migrate from another tool](/dotsync/guides/migrate/).

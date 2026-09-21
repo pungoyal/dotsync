@@ -1,0 +1,128 @@
+---
+/** The home page's feature list. Each item links to where the claim is explained in full. */
+import { Icon } from '@astrojs/starlight/components';
+import { withBase } from '../lib/links';
+
+type IconName = Parameters<typeof Icon>[0]['name'];
+const features: { icon: IconName; title: string; body: string; href: string; more: string }[] = [
+	{
+		icon: 'random',
+		title: 'Both ways, automatically',
+		body: 'Edit the real file on any machine. A background job on each machine syncs every five minutes by default. Adding and removing files works from any machine too.',
+		href: '/guides/background-agent/',
+		more: 'The background agent',
+	},
+	{
+		icon: 'approve-check-circle',
+		title: 'Backed up before it’s replaced',
+		body: 'Every local file dotsync replaces or deletes is copied aside first, and every synced version stays in git history.',
+		href: '/concepts/safety/',
+		more: 'Safety guarantees',
+	},
+	{
+		icon: 'warning',
+		title: 'Conflicts, never guesses',
+		body: 'When two machines change the same file, dotsync keeps both versions untouched and asks you. It never merges and never picks a winner.',
+		href: '/guides/resolve-conflicts/',
+		more: 'Resolve conflicts',
+	},
+	{
+		icon: 'padlock',
+		title: 'Secrets stay on the machine',
+		body: 'Private keys, cloud credentials and tokens pasted into a config file are held back before they reach the repository.',
+		href: '/guides/secrets/',
+		more: 'Keep secrets out',
+	},
+	{
+		icon: 'laptop',
+		title: 'Offline for a month? Fine.',
+		body: 'Changes wait while the remote is unreachable. A machine that comes back catches up, and still spots conflicts.',
+		href: '/concepts/how-sync-works/',
+		more: 'How sync works',
+	},
+	{
+		icon: 'code-branch',
+		title: 'Nothing new to run',
+		body: 'One static binary, git, and a private repository on any git host. No server to run, no service to sign up for, no daemon.',
+		href: '/concepts/design-decisions/',
+		more: 'Design decisions',
+	},
+];
+---
+
+<ul class="features not-content">
+	{
+		features.map((f) => (
+			<li>
+				<span class="icon" aria-hidden="true">
+					<Icon name={f.icon} size="1.25rem" />
+				</span>
+				<h3>{f.title}</h3>
+				<p>{f.body}</p>
+				<a href={withBase(f.href)}>
+					{f.more} <span aria-hidden="true">→</span>
+				</a>
+			</li>
+		))
+	}
+</ul>
+
+<style>
+	.features {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(16.5rem, 1fr));
+		gap: 1rem;
+	}
+	li {
+		display: flex;
+		flex-direction: column;
+		padding: 1.4rem 1.4rem 1.2rem;
+		border: 1px solid var(--ds-border);
+		border-radius: var(--ds-radius);
+		background: var(--ds-surface);
+		transition: border-color 150ms;
+	}
+	li:hover {
+		border-color: color-mix(in oklab, var(--sl-color-accent) 60%, var(--ds-border));
+	}
+	.icon {
+		display: inline-grid;
+		place-items: center;
+		width: 2.4rem;
+		height: 2.4rem;
+		border-radius: 0.6rem;
+		color: var(--sl-color-accent);
+		background: color-mix(in oklab, var(--sl-color-accent) 12%, transparent);
+		border: 1px solid color-mix(in oklab, var(--sl-color-accent) 25%, transparent);
+	}
+	h3 {
+		margin: 1rem 0 0.4rem;
+		font-size: 1.05rem;
+		font-weight: 650;
+		letter-spacing: -0.01em;
+		color: var(--sl-color-white);
+	}
+	p {
+		margin: 0;
+		flex: 1;
+		font-size: 0.925rem;
+		line-height: 1.6;
+		color: var(--sl-color-gray-2);
+		text-wrap: pretty;
+	}
+	a {
+		margin-top: 1rem;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--sl-color-text-accent);
+		text-decoration: none;
+		width: fit-content;
+	}
+	a:hover {
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
+	}
+</style>

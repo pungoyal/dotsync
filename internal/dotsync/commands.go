@@ -183,12 +183,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
+// flagSetHook, when set, sees every command's flags as they're defined. The documentation's
+// command reference is generated this way (see reference_test.go).
+var flagSetHook func(fs *flag.FlagSet, args string)
+
 func newFlags(name, args string, stderr io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "usage: dotsync %s %s\n", name, args)
 		fs.PrintDefaults()
+	}
+	if flagSetHook != nil {
+		flagSetHook(fs, args)
 	}
 	return fs
 }
@@ -389,11 +396,11 @@ type addOptions struct {
 func cmdAdd(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("add", "[options] <path>...", stderr)
 	var o addOptions
-	fs.StringVar(&o.source, "source", "", "path inside the repository's files/ (default: derived from the path)")
-	fs.StringVar(&o.desc, "d", "", "short human-readable description")
+	fs.StringVar(&o.source, "source", "", "`path` of the content under the repository's files/ (default: derived from the path)")
+	fs.StringVar(&o.desc, "d", "", "describe the entry with `text` (default: the file name)")
 	fs.StringVar(&o.desc, "description", "", "same as -d")
-	fs.Var((*stringList)(&o.ignore), "ignore", "for directories: glob of names/paths not to sync (repeatable)")
-	fs.Var((*stringList)(&o.oses), "os", "only manage on this OS: darwin or linux (repeatable)")
+	fs.Var((*stringList)(&o.ignore), "ignore", "for directories: a `glob` of names or paths not to sync (repeatable)")
+	fs.Var((*stringList)(&o.oses), "os", "only manage the entry on this `OS`: darwin or linux (repeatable)")
 	fs.BoolVar(&o.allowSecrets, "allow-secrets", false, "allow content that looks like credentials")
 	noSync := fs.Bool("no-sync", false, "only queue the change; the next sync pushes it")
 	paths, err := parseArgs(fs, args)
@@ -520,8 +527,11 @@ func checkNewSecrets(c *Ctx, path, kind string, ignore []string) error {
 	return nil
 }
 
+// findEntry finds the entry named by a source or a path. Entries for different operating systems
+// may share a target; a path then names the one for this OS, if there is one.
 func findEntry(c *Ctx, m *Manifest, needle string) map[string]any {
 	path := absPath(needle)
+	var other map[string]any
 	for _, raw := range m.Entries {
 		src := rawSource(raw)
 		if src == "" {
@@ -531,10 +541,15 @@ func findEntry(c *Ctx, m *Manifest, needle string) map[string]any {
 			return raw
 		}
 		if t, err := expandTarget(str(raw["target"]), c.Paths); err == nil && t == path {
-			return raw
+			if appliesHere(raw) {
+				return raw
+			}
+			if other == nil {
+				other = raw
+			}
 		}
 	}
-	return nil
+	return other
 }
 
 func queueOps(c *Ctx, needles []string, noSync bool, mk func(raw map[string]any) (*Op, string)) (int, error) {
@@ -916,7 +931,7 @@ func cmdDiff(args []string, stdout, stderr io.Writer) (int, error) {
 
 func cmdResolve(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("resolve", "<path>... --keep local|remote", stderr)
-	keep := fs.String("keep", "", "which version wins: local (this machine) or remote")
+	keep := fs.String("keep", "", "which version wins (`local|remote`): this machine's, or the repository's")
 	needles, err := parseArgs(fs, args)
 	if err != nil {
 		return 2, err
@@ -968,7 +983,7 @@ func cmdResolve(args []string, stdout, stderr io.Writer) (int, error) {
 
 func cmdLog(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("log", "[-n N]", stderr)
-	n := fs.Int("n", 20, "number of commits")
+	n := fs.Int("n", 20, "show the last `N` commits")
 	if _, err := parseArgs(fs, args); err != nil {
 		return 2, err
 	}
@@ -998,8 +1013,8 @@ Prefer the ` + "`dotsync`" + ` command to editing this repository by hand. If yo
 
 func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 	fs := newFlags("init", "[options] <git-url>", stderr)
-	branch := fs.String("branch", "", "branch to use (default main)")
-	interval := fs.Int("interval", 0, fmt.Sprintf("seconds between automatic syncs (default %d)", defaultInterval))
+	branch := fs.String("branch", "", "the `branch` to sync (default main)")
+	interval := fs.Int("interval", 0, fmt.Sprintf("`seconds` between automatic syncs (default %d)", defaultInterval))
 	keepLocal := fs.Bool("keep-existing", false, "report existing differing local files as conflicts instead of replacing them (after a backup)")
 	noAgent := fs.Bool("no-agent", false, "do not install the background agent")
 	noInstall := fs.Bool("no-install", false, "do not copy dotsync to ~/.local/bin")
@@ -1054,8 +1069,11 @@ func cmdInit(args []string, stdout, stderr io.Writer) (int, error) {
 	}
 	printResult(c, res)
 	code := resultCode(res)
-	if res.Counts[actDownload] > 0 {
-		c.say("existing local files that were replaced are saved under %s", tilde(c.Paths.Backups))
+	for _, it := range res.Items {
+		if it.Action == actDownload && strings.HasPrefix(it.Note, "previous version saved to ") {
+			c.say("existing local files that were replaced are saved under %s", tilde(c.Paths.Backups))
+			break
+		}
 	}
 	if !*noAgent {
 		msg, err := agentInstall(c)

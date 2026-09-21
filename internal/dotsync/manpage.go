@@ -1,7 +1,7 @@
 package dotsync
 
 import (
-	"bytes"
+	"flag"
 	"fmt"
 	"io"
 	"strings"
@@ -89,35 +89,55 @@ func ManPage(version, date string) string {
 
 type manOption struct{ term, text string }
 
-// commandHelp runs `dotsync <cmd> -h` and returns its synopsis and options, parsed from the
-// flag package's usage output.
+// commandHelp runs `dotsync <cmd> -h`, without running the command, and returns its synopsis
+// and options as the command defines them. "same as -x" flags are listed with the flag they
+// alias, as in the documentation site's reference.
 func commandHelp(cmd command) (string, []manOption) {
-	var out bytes.Buffer
-	_, _ = cmd.run([]string{"-h"}, io.Discard, &out) // always flag.ErrHelp
-	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
-	synopsis := strings.TrimPrefix(lines[0], "usage: dotsync ")
-	var opts []manOption
-	for _, l := range lines[1:] {
-		// "  -name type" then an indented description line, or "  -x\tdescription".
-		head, text, _ := strings.Cut(l, "\t")
-		switch {
-		case strings.HasPrefix(head, "  -"):
-			name, arg, _ := strings.Cut(strings.TrimSpace(head), " ")
-			dashes := `\-`
-			if len(name) > 2 {
-				dashes = `\-\-`
-			}
-			term := `.B ` + dashes + roffEscape(name[1:])
-			if arg != "" {
-				term = `.BI ` + dashes + roffEscape(name[1:]) + ` " ` + roffEscape(arg) + `"`
-			}
-			opts = append(opts, manOption{term: term, text: strings.TrimSpace(text)})
-		case len(opts) > 0:
-			o := &opts[len(opts)-1]
-			o.text = strings.TrimSpace(o.text + " " + strings.TrimSpace(text))
-		}
+	var fs *flag.FlagSet
+	var args string
+	flagSetHook = func(f *flag.FlagSet, a string) { fs, args = f, a }
+	defer func() { flagSetHook = nil }()
+	_, _ = cmd.run([]string{"-h"}, io.Discard, io.Discard) // always flag.ErrHelp
+	synopsis := strings.TrimSpace(cmd.name + " " + args)
+	if fs == nil {
+		return synopsis, nil
 	}
+	aliases := map[string][]string{}
+	fs.VisitAll(func(f *flag.Flag) {
+		if target, ok := strings.CutPrefix(f.Usage, "same as -"); ok {
+			aliases[target] = append(aliases[target], f.Name)
+		}
+	})
+	var opts []manOption
+	fs.VisitAll(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Usage, "same as -") {
+			return
+		}
+		value, usage := flag.UnquoteUsage(f)
+		if b, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() {
+			value = ""
+		} else if f.DefValue != "" && f.DefValue != "0" {
+			usage += " (default " + f.DefValue + ")"
+		}
+		var terms []string
+		for _, name := range append([]string{f.Name}, aliases[f.Name]...) {
+			term := `\fB` + manDashes(name) + `\fR`
+			if value != "" {
+				term += ` \fI` + roffEscape(value) + `\fR`
+			}
+			terms = append(terms, term)
+		}
+		opts = append(opts, manOption{term: strings.Join(terms, ", "), text: usage})
+	})
 	return synopsis, opts
+}
+
+// manDashes writes a flag the way the documentation does: -x for one letter, --name otherwise.
+func manDashes(name string) string {
+	if len(name) == 1 {
+		return `\-` + roffEscape(name)
+	}
+	return `\-\-` + roffEscape(name)
 }
 
 // roffEscape makes s safe as roff text: backslashes, hyphens and non-ASCII characters are

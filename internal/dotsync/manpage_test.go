@@ -14,7 +14,7 @@ func TestManPage(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{`.TH DOTSYNC 1 "2026\-09\-21" "dotsync 1.2.3"`, `.B \-\-keep\-existing`, `.BI \-n " int"`, ".SH EXIT STATUS"} {
+	for _, want := range []string{`.TH DOTSYNC 1 "2026\-09\-21" "dotsync 1.2.3"`, `\fB\-\-keep\-existing\fR`, `\fB\-n\fR \fIN\fR`, `\fB\-d\fR \fItext\fR, \fB\-\-description\fR \fItext\fR`, ".SH EXIT STATUS"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("missing %q", want)
 		}
