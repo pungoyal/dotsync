@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/pungoyal/dotsync/compare/v0.3.0...v0.4.0) (2026-09-21)
+
+
+### Features
+
+* sync age/sops-encrypted files, block age keys, and add a mise guide ([#14](https://github.com/pungoyal/dotsync/issues/14)) ([3b8a75c](https://github.com/pungoyal/dotsync/commit/3b8a75c161d3f6fda411f2e9ea1668f2c7f9603a))
+
+
+### Bug Fixes
+
+* keep the background agent's definition current after updates ([#12](https://github.com/pungoyal/dotsync/issues/12)) ([e277a60](https://github.com/pungoyal/dotsync/commit/e277a609d62ded5d72077c8dd3522d5ab281edaa))
+
 ## [0.3.0](https://github.com/pungoyal/dotsync/compare/v0.2.0...v0.3.0) (2026-09-21)
 
 
