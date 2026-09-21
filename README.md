@@ -133,13 +133,13 @@ There are no git merges, rebases or clever heuristics. The full design is in [Ho
 
 ## Comparison
 
-| | dotsync | chezmoi | yadm | GNU Stow | Mackup |
-|---|---|---|---|---|---|
-| You edit | the real file | the source, or the file then `chezmoi re-add` | the real file | the real file, through its symlink | the real file |
-| Other machines get changes | automatically | when you run `chezmoi update` | when you run `yadm pull` | when you pull the directory | when you run `mackup restore` |
-| Same file changed on two machines | per-file conflict: both kept, you choose | git merge conflict in the source; asks before overwriting a file changed since the last apply | git merge conflict | git merge conflict, if the directory is a git repository | whatever the storage provider does |
-| Secrets | held back before upload | templates that read password managers; encryption | encryption | not handled | not handled |
-| Differences per machine | per-OS entries, per-machine exclusions | templates | alternate files, templates | separate packages | not handled |
+| | dotsync | chezmoi | yadm | GNU Stow | Mackup | mise dotfiles |
+|---|---|---|---|---|---|---|
+| You edit | the real file | the source, or the file then `chezmoi re-add` | the real file | the real file, through its symlink | the real file | the real file, or the source for copied and templated files |
+| Other machines get changes | automatically | when you run `chezmoi update` | when you run `yadm pull` | when you pull the directory | when you run `mackup restore` | automatically with the history watcher and `history.sync = "sync"`, otherwise when you run `mise dot sync` |
+| Same file changed on two machines | per-file conflict: both kept, you choose | git merge conflict in the source; asks before overwriting a file changed since the last apply | git merge conflict | git merge conflict, if the directory is a git repository | whatever the storage provider does | per-file conflict, but sync pauses for every tracked file until you choose |
+| Secrets | held back before upload | templates that read password managers; encryption | encryption | not handled | not handled | encryption; credential files skipped by name |
+| Differences per machine | per-OS entries, per-machine exclusions | templates | alternate files, templates | separate packages | not handled | templates, per-OS and per-profile variants |
 
 dotsync deliberately does **not** do templating. If you need one file to differ per machine in complicated ways, chezmoi is excellent. dotsync is for people who want their files to simply be the same everywhere, with no ceremony.
 

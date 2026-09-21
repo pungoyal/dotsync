@@ -1,20 +1,20 @@
 ---
 title: Comparison with other tools
-description: How dotsync compares with chezmoi, yadm, GNU Stow and Mackup, when to choose each, and how to use them together.
+description: How dotsync compares with chezmoi, yadm, GNU Stow, Mackup and mise, when to choose each, and how to use them together.
 ---
 
 There are many good dotfile tools, and they solve different problems. Here's an honest comparison.
 
 ## At a glance
 
-| | dotsync | chezmoi | yadm | GNU Stow | Mackup |
-|---|---|---|---|---|---|
-| **Model** | two-way sync | source state, applied to your home | your home is a git work tree | symlinks into a directory | copies to and from a cloud-storage folder |
-| **You edit** | the real file | the source, or the file then `chezmoi re-add` | the real file | the real file, through its symlink | the real file |
-| **Other machines get changes** | automatically | when you run `chezmoi update` | when you run `yadm pull` | when you pull the directory | when you run `mackup restore` |
-| **Same file changed on two machines** | per-file conflict: both kept, you choose | git merge conflict in the source; asks before overwriting a file changed since the last apply | git merge conflict | git merge conflict, if the directory is a git repository | whatever the storage provider does |
-| **Secrets** | held back before upload | templates that read password managers; encryption | encryption | not handled | not handled |
-| **Differences per machine** | per-OS entries, per-machine exclusions | templates | alternate files, templates | separate packages | not handled |
+| | dotsync | chezmoi | yadm | GNU Stow | Mackup | mise dotfiles |
+|---|---|---|---|---|---|---|
+| **Model** | two-way sync | source state, applied to your home | your home is a git work tree | symlinks into a directory | copies to and from a cloud-storage folder | files linked, copied or templated from a source, or tracked in place with git history |
+| **You edit** | the real file | the source, or the file then `chezmoi re-add` | the real file | the real file, through its symlink | the real file | the real file, or the source for copied and templated files |
+| **Other machines get changes** | automatically | when you run `chezmoi update` | when you run `yadm pull` | when you pull the directory | when you run `mackup restore` | automatically with the history watcher and `history.sync = "sync"`, otherwise when you run `mise dot sync` |
+| **Same file changed on two machines** | per-file conflict: both kept, you choose | git merge conflict in the source; asks before overwriting a file changed since the last apply | git merge conflict | git merge conflict, if the directory is a git repository | whatever the storage provider does | per-file conflict, but sync pauses for every tracked file until you choose |
+| **Secrets** | held back before upload | templates that read password managers; encryption | encryption | not handled | not handled | encryption; credential files skipped by name |
+| **Differences per machine** | per-OS entries, per-machine exclusions | templates | alternate files, templates | separate packages | not handled | templates, per-OS and per-profile variants |
 
 ## When to choose which
 
@@ -26,10 +26,12 @@ There are many good dotfile tools, and they solve different problems. Here's an 
 
 **Choose GNU Stow** if you want the smallest possible tool, you're happy running it by hand, and your applications don't replace symlinks.
 
+**Choose mise's dotfiles** if you already use mise to set up machines (packages, services, tools) and want dotfiles in the same configuration, with templates and a full edit history you can roll back. Its two-way sync needs the history watcher and `history.sync = "sync"`. It doesn't scan contents for secrets, so encrypt anything sensitive before its first save. See [mise's dotfiles docs](https://mise.jdx.dev/dotfiles.html).
+
 **Choose Mackup** if you mainly want to back up and restore application settings, especially macOS application preferences, through a folder in your cloud storage.
 
 ## Using them together
 
-dotsync only touches the files in its manifest, so it coexists with other tools as long as they don't manage the **same** files. A common setup is dotsync for everyday configuration, and chezmoi for a few heavily templated files.
+dotsync only touches the files in its manifest, so it coexists with other tools as long as they don't manage the **same** files. A common setup is dotsync for everyday configuration, and chezmoi for a few heavily templated files. If you use both dotsync and mise, see [Use with mise](/dotsync/guides/mise/#mises-own-dotfiles).
 
 Moving over? See [Migrate from another tool](/dotsync/guides/migrate/).
