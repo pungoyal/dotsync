@@ -91,6 +91,9 @@ func NewPaths() *Paths {
 	p.Backups = filepath.Join(p.StateDir, "backups")
 	p.Conflicts = filepath.Join(p.StateDir, "conflicts")
 	p.Bin = filepath.Join(homeDir(), ".local", "bin", "dotsync")
+	if bin := packagedBin(running()); bin != "" {
+		p.Bin = bin // the package manager keeps it up to date; a copy would go stale
+	}
 	return p
 }
 

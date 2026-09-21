@@ -7,6 +7,7 @@ before:
   hooks:
     - go mod tidy
     - go mod verify
+    - scripts/package-files.sh {{ .Version }} {{ .CommitTimestamp }}
 
 builds:
   - id: dotsync
@@ -33,6 +34,62 @@ archives:
       - LICENSE
       - README.md
       - CHANGELOG.md
+      - src: build/dotsync.1.gz
+        dst: manpages/dotsync.1.gz
+
+# Debian/Ubuntu package. Checksummed, attested and published like the archives; the docs
+# workflow also serves the latest one from a signed APT repository (see packaging/apt/).
+nfpms:
+  - id: deb
+    package_name: dotsync
+    formats: [deb]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: dotsync
+    maintainer: Puneet Goyal <pungoyal@gmail.com>
+    homepage: https://pungoyal.github.io/dotsync/
+    description: |-
+      Set-and-forget dotfile sync for macOS and Linux
+       dotsync keeps dotfiles in sync across machines through a private git
+       repository. Edit a file on any machine and a background agent propagates
+       it everywhere else. Local files are backed up before they are replaced,
+       and concurrent edits become conflicts instead of silent overwrites.
+    license: MIT
+    section: utils
+    priority: optional
+    bindir: /usr/bin
+    # Commit time, not build time, so the package is reproducible.
+    mtime: "{{ .CommitDate }}"
+    dependencies:
+      - git (>= 1:2.20)
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/dotsync/copyright
+        file_info:
+          mode: 0644
+      - src: README.md
+        dst: /usr/share/doc/dotsync/README.md
+        file_info:
+          mode: 0644
+      - src: build/dotsync.1.gz
+        dst: /usr/share/man/man1/dotsync.1.gz
+        file_info:
+          mode: 0644
+      - src: build/changelog.gz
+        dst: /usr/share/doc/dotsync/changelog.gz
+        file_info:
+          mode: 0644
+      - src: packaging/deb/lintian-overrides
+        dst: /usr/share/lintian/overrides/dotsync
+        file_info:
+          mode: 0644
+    deb:
+      fields:
+        Bugs: https://github.com/pungoyal/dotsync/issues
+
+# Snapshot (CI) builds get a Debian "native" version like a release, so the .deb that CI lints
+# and installs matches what a release produces. "~" also keeps it below the next release.
+snapshot:
+  version_template: "{{ incpatch .Version }}~snapshot.{{ .ShortCommit }}"
 
 checksum:
   name_template: checksums.txt
@@ -40,6 +97,10 @@ checksum:
 
 sboms:
   - artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.sbom.json"
+  - id: packages
+    artifacts: package
     documents:
       - "{{ .ArtifactName }}.sbom.json"
 
@@ -57,9 +118,11 @@ release:
     ### Install or update
 
     ```sh
-    curl -fsSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPOSITORY }}/main/install.sh | sh   # new install
-    dotsync update                                                                                    # existing install
+    brew install pungoyal/tap/dotsync                                                                 # Homebrew
+    curl -fsSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPOSITORY }}/main/install.sh | sh   # install script
     ```
+
+    Homebrew and apt installs update with `brew upgrade dotsync` and `sudo apt upgrade`; others with `dotsync update`. For the APT repository, see [installation](https://pungoyal.github.io/dotsync/start/installation/).
 
     ### Verify this release
 

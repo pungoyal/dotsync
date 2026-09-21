@@ -11,8 +11,15 @@ Your dotfiles are ordinary files, so removing dotsync leaves them exactly as the
 dotsync sync                   # send any last edits
 dotsync agent uninstall        # remove the launchd agent, systemd timer or crontab line
 rm -rf ~/.config/dotsync ~/.local/share/dotsync ~/.local/state/dotsync
-rm ~/.local/bin/dotsync
 ```
+
+Then remove the binary the way you installed it. Uninstall the agent first, on every user account that set dotsync up, or it keeps trying to run a missing binary.
+
+| Installed with | Remove with |
+|---|---|
+| the install script, `init` or a release archive | `rm ~/.local/bin/dotsync` |
+| Homebrew | `brew uninstall dotsync` |
+| apt | `sudo apt remove dotsync`, and optionally `sudo rm /etc/apt/sources.list.d/dotsync.sources /etc/apt/keyrings/dotsync.asc` |
 
 If you set `XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `XDG_STATE_HOME`, the three directories are under those instead. If you installed another copy of `dotsync`, for example with `go install`, remove that too.
 

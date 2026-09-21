@@ -1,11 +1,13 @@
 name: docs
 
 # Builds the documentation site (website/) on every PR, checking all internal links, and
-# deploys it to GitHub Pages on pushes to main.
+# deploys it to GitHub Pages on pushes to main. The deployed site also serves the signed APT
+# repository (/apt/) with the latest release's .deb packages; the release workflow runs this
+# workflow after every release to refresh it.
 on:
   push:
     branches: [main]
-    paths: ["website/**", ".github/workflows/docs.yml"]
+    paths: ["website/**", "packaging/apt/**", ".github/workflows/docs.yml"]
   pull_request:
     paths: ["website/**", ".github/workflows/docs.yml"]
   workflow_dispatch:
@@ -20,6 +22,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read # verify the packages' build provenance
     defaults:
       run:
         working-directory: website
@@ -35,6 +40,29 @@ jobs:
           cache-dependency-path: website/package-lock.json
       - run: npm ci
       - run: npm run build
+      # Needs secrets.APT_SIGNING_KEY (see CONTRIBUTING.md); without it the site deploys
+      # without the APT repository.
+      - name: Add the APT repository
+        if: github.event_name != 'pull_request'
+        working-directory: .
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$APT_SIGNING_KEY" ]; then
+            echo "::warning::APT_SIGNING_KEY is not set; the site is deployed without the APT repository"
+            exit 0
+          fi
+          debs="$RUNNER_TEMP/debs"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --pattern checksums.txt --dir "$debs"
+          set -- "$debs"/*.deb
+          if [ ! -e "$1" ]; then
+            echo "::warning::the latest release has no .deb packages; the site is deployed without the APT repository"
+            exit 0
+          fi
+          (cd "$debs" && sha256sum --check --ignore-missing checksums.txt)
+          for deb in "$@"; do gh attestation verify "$deb" --repo "$GITHUB_REPOSITORY"; done
+          packaging/apt/build-repo.sh "$debs" website/dist/apt
       - if: github.event_name != 'pull_request'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - if: github.event_name != 'pull_request'

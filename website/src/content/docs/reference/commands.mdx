@@ -70,7 +70,7 @@ The usage lines and flag tables on this page are generated from dotsync's source
 
 <CommandSynopsis name="init" />
 
-Sets up this machine. It clones the repository into `~/.local/share/dotsync/repo` and, if the repository is empty, creates the manifest there and pushes it. Then it writes the [machine configuration](/dotsync/reference/configuration/), copies the running binary to `~/.local/bin/dotsync`, runs the first sync, and installs the [background agent](/dotsync/guides/background-agent/).
+Sets up this machine. It clones the repository into `~/.local/share/dotsync/repo` and, if the repository is empty, creates the manifest there and pushes it. Then it writes the [machine configuration](/dotsync/reference/configuration/), copies the running binary to `~/.local/bin/dotsync` (unless Homebrew or apt installed it), runs the first sync, and installs the [background agent](/dotsync/guides/background-agent/).
 
 `init` is safe to run again, for example to re-install the agent or to change the branch or interval. Flags you don't pass keep their saved values. A machine can only sync with one repository; to [switch](/dotsync/project/faq/#how-do-i-move-to-a-different-remote), change the remote first.
 
@@ -107,6 +107,8 @@ Replaces this binary with the latest release, after the same checks as the insta
 <CommandFlags name="update" />
 
 <Terminal code={updateOut} />
+
+If Homebrew or apt installed dotsync, `update` changes nothing and prints the package manager's command instead (`brew upgrade dotsync`, or `sudo apt install --only-upgrade dotsync`); `--check` works as usual.
 
 Binaries are replaced atomically, and nothing is replaced if a check fails. A development build, one without a release version, is only replaced when you pass `--version`. `update` looks up the latest release through the GitHub API; set `GITHUB_TOKEN` if you hit its rate limit.
 

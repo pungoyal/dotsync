@@ -36,7 +36,7 @@ Everything dotsync keeps on a machine lives under the XDG base directories. The 
 
 | Path | Purpose | Safe to delete? |
 |---|---|---|
-| `~/.local/bin/dotsync` | the binary the background agent runs | reinstall with `init` or the install script |
+| `~/.local/bin/dotsync` | the binary the background agent runs, unless Homebrew or apt installed dotsync | reinstall with `init` or the install script |
 | `~/Library/LaunchAgents/io.github.dotsync.plist` | the background agent on macOS | use `dotsync agent uninstall` |
 | `~/.config/systemd/user/dotsync.service`, `dotsync.timer` | the background agent on Linux with systemd | use `dotsync agent uninstall` |
 | a line in your crontab ending in `# dotsync-agent` | the background agent on Linux without systemd | use `dotsync agent uninstall` |

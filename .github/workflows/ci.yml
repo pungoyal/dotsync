@@ -71,7 +71,7 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -d .; exit 1; }
       - name: shellcheck
-        run: shellcheck install.sh
+        run: shellcheck install.sh scripts/*.sh packaging/*/*.sh
       - name: actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
 
@@ -160,13 +160,100 @@ jobs:
         run: |
           ./dist/dotsync_linux_amd64_v1/dotsync version
           ./dist/dotsync_linux_amd64_v1/dotsync --help
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: snapshot
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/checksums.txt
+          retention-days: 3
+
+  # The .deb as users get it: lintian-clean, installable with apt on supported releases, and
+  # served from a signed APT repository built by the same script as the real one.
+  deb:
+    needs: release-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: snapshot
+          path: dist
+      - name: lintian
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends lintian
+          lintian --display-level ">=pedantic" --fail-on error,warning,pedantic dist/*_amd64.deb
+      - name: build a signed APT repository (throwaway key)
+        run: |
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 0700 "$GNUPGHOME"
+          gpg --batch --passphrase '' --quick-gen-key "dotsync CI <ci@invalid>" rsa4096 sign 1d
+          APT_SIGNING_KEY=$(gpg --armor --export-secret-keys) packaging/apt/build-repo.sh dist "$RUNNER_TEMP/apt"
+      - name: install with apt
+        run: |
+          for image in ubuntu:22.04 ubuntu:24.04 debian:12 debian:13; do
+            echo "::group::$image"
+            docker run --rm -v "$RUNNER_TEMP/apt:/repo:ro" "$image" sh -euxc '
+              install -d -m 0755 /etc/apt/keyrings
+              cp /repo/dotsync.asc /etc/apt/keyrings/dotsync.asc
+              sed "s|^URIs: .*|URIs: file:/repo|" /repo/dotsync.sources > /etc/apt/sources.list.d/dotsync.sources
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq dotsync
+              dotsync version
+              test "$(dpkg-query -W -f "\${Status}" dotsync)" = "install ok installed"
+              dotsync update --version v0.0.1 2>&1 | grep -q "installed with apt"
+              DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq dotsync
+              test ! -e /usr/bin/dotsync
+            '
+            echo "::endgroup::"
+          done
+
+  # The Homebrew formula the release publishes, installed from the snapshot archives and
+  # checked the way Homebrew checks formulae.
+  homebrew:
+    needs: release-check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: snapshot
+          path: dist
+      - name: install, test and audit the formula
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"; fi
+          set -- dist/dotsync_*_linux_amd64.tar.gz
+          version=${1#dist/dotsync_}
+          version=${version%_linux_amd64.tar.gz}
+          brew tap-new --no-git local/dotsync
+          packaging/homebrew/formula.sh "$version" dist/checksums.txt "file://$PWD/dist" \
+            > "$(brew --repository local/dotsync)/Formula/dotsync.rb"
+          brew install --formula local/dotsync/dotsync
+          brew test local/dotsync/dotsync
+          brew audit --strict --formula local/dotsync/dotsync
+          brew style local/dotsync/dotsync
+          dotsync update --version v0.0.1 2>&1 | grep -q "installed with Homebrew"
+          test -f "$(brew --prefix)/share/man/man1/dotsync.1.gz"
 
   # One result for the whole workflow: a single check to require in branch protection, and on
   # dispatched runs (the release PR) a commit status, which the PR shows.
   ok:
     name: ci ok
     if: always()
-    needs: [test, minimum-go, lint, fuzz-targets, fuzz, vulncheck, release-check]
+    needs: [test, minimum-go, lint, fuzz-targets, fuzz, vulncheck, release-check, deb, homebrew]
     runs-on: ubuntu-latest
     permissions:
       statuses: write

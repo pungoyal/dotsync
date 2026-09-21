@@ -156,3 +156,64 @@ func TestSemver(t *testing.T) {
 		}
 	}
 }
+
+func TestPackagedAt(t *testing.T) {
+	sources, owned := t.TempDir(), false
+	oldSources, oldOwns := aptSourcesDir, dpkgOwns
+	aptSourcesDir, dpkgOwns = sources, func() bool { return owned }
+	t.Cleanup(func() { aptSourcesDir, dpkgOwns = oldSources, oldOwns })
+
+	for _, exe := range []string{"/home/me/.local/bin/dotsync", "/usr/local/bin/dotsync", "/opt/Cellar/other/1.0/bin/dotsync"} {
+		if pm, ok := packagedAt(exe); ok {
+			t.Errorf("%s: detected %s", exe, pm.name)
+		}
+	}
+	for exe, bin := range map[string]string{
+		"/opt/homebrew/Cellar/dotsync/0.6.0/bin/dotsync":              "/opt/homebrew/bin/dotsync",
+		"/home/linuxbrew/.linuxbrew/Cellar/dotsync/1.0.0/bin/dotsync": "/home/linuxbrew/.linuxbrew/bin/dotsync",
+	} {
+		if pm, ok := packagedAt(exe); !ok || pm.name != "Homebrew" || pm.bin != bin || pm.upgrade != "brew upgrade dotsync" {
+			t.Errorf("%s: %+v %v", exe, pm, ok)
+		}
+	}
+
+	if pm, ok := packagedAt("/usr/bin/dotsync"); !ok || pm.name == "apt" {
+		t.Errorf("not installed by dpkg: %+v %v", pm, ok)
+	}
+	owned = true
+	if pm, _ := packagedAt("/usr/bin/dotsync"); pm.name != "apt" || !strings.Contains(pm.upgrade, "releases/latest") {
+		t.Errorf("downloaded .deb: %+v", pm)
+	}
+	os.WriteFile(filepath.Join(sources, "dotsync.sources"), []byte("Types: deb\n"), 0o644)
+	if pm, _ := packagedAt("/usr/bin/dotsync"); pm.bin != "/usr/bin/dotsync" || !strings.HasPrefix(pm.upgrade, "sudo apt update") {
+		t.Errorf("APT repository: %+v", pm)
+	}
+}
+
+func TestUpdateDefersToPackageManager(t *testing.T) {
+	newWorld(t).machine("alpha").activate()
+	fakeRelease(t, "v0.3.0", []byte("new binary"), false)
+	prefix, _ := filepath.EvalSymlinks(t.TempDir()) // macOS: /var is a link to /private/var
+	exe := filepath.Join(prefix, "Cellar", "dotsync", "0.2.0", "bin", "dotsync")
+	os.MkdirAll(filepath.Dir(exe), 0o755)
+	os.WriteFile(exe, []byte("old binary"), 0o755)
+	old := updateTarget
+	updateTarget = func() (string, error) { return exe, nil }
+	t.Cleanup(func() { updateTarget = old })
+	Version = "0.2.0"
+
+	if bin := NewPaths().Bin; bin != filepath.Join(prefix, "bin", "dotsync") {
+		t.Errorf("the agent would run %s, not Homebrew's stable link", bin)
+	}
+	var out bytes.Buffer
+	if code := Run([]string{"update", "--check"}, &out, &out); code != 0 || !strings.Contains(out.String(), "run `brew upgrade dotsync`") {
+		t.Fatalf("check: %d %s", code, out.String())
+	}
+	out.Reset()
+	if code := Run([]string{"update"}, &out, &out); code == 0 || !strings.Contains(out.String(), "installed with Homebrew") {
+		t.Fatalf("update: %d %s", code, out.String())
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
+		t.Fatal("replaced a binary owned by Homebrew")
+	}
+}

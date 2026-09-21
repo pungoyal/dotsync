@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install dotsync on macOS or Linux with the install script, go install, a release archive or from source, and keep it up to date.
+description: Install dotsync on macOS or Linux with Homebrew, apt, the install script, go install, a release archive or from source, and keep it up to date.
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
@@ -43,6 +43,35 @@ curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | 
 ```
 
 </TabItem>
+<TabItem label="Homebrew">
+
+On macOS or Linux:
+
+```sh
+brew install pungoyal/tap/dotsync
+```
+
+The formula installs the same release archive as the install script, pinned by its SHA-256 checksum, and the `dotsync(1)` man page. **Homebrew keeps dotsync up to date**: use `brew upgrade dotsync`.
+
+</TabItem>
+<TabItem label="apt (Ubuntu, Debian)">
+
+Add the signed dotsync repository, then install the package:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://pungoyal.github.io/dotsync/apt/dotsync.asc | sudo tee /etc/apt/keyrings/dotsync.asc >/dev/null
+curl -fsSL https://pungoyal.github.io/dotsync/apt/dotsync.sources | sudo tee /etc/apt/sources.list.d/dotsync.sources >/dev/null
+sudo apt update && sudo apt install dotsync
+```
+
+To check the key before trusting it, run `gpg --show-keys /etc/apt/keyrings/dotsync.asc`. It should print the fingerprint `FD8B DCCB 9FAE 77A7 03F3 7154 3EC2 40F3 0AB4 EE33`, which is also listed in the project's [security policy](https://github.com/pungoyal/dotsync/blob/main/SECURITY.md#signing-keys).
+
+The repository serves the latest release for amd64 and arm64, and apt trusts its key for this repository only (`Signed-By`). The package installs `/usr/bin/dotsync` and the man page, and depends on `git`. **apt keeps dotsync up to date** along with your other packages. It's tested on Ubuntu 22.04 and 24.04, and Debian 12 and 13.
+
+To install without adding the repository, download `dotsync_<version>_<arch>.deb` from the [latest release](https://github.com/pungoyal/dotsync/releases/latest), [verify it](/dotsync/project/verifying-releases/), and run `sudo apt install ./dotsync_*.deb`. To update, install the next release's `.deb` the same way.
+
+</TabItem>
 <TabItem label="go install">
 
 With Go 1.23 or newer:
@@ -81,7 +110,7 @@ make build        # writes bin/dotsync
 
 ## Put it on your `PATH`
 
-If `dotsync version` says *command not found*, add `~/.local/bin` to your `PATH`:
+Homebrew and apt put dotsync on your `PATH` already. Otherwise, if `dotsync version` says *command not found*, add `~/.local/bin` to your `PATH`:
 
 <Tabs syncKey="shell">
 <TabItem label="zsh">
@@ -108,10 +137,12 @@ fish_add_path ~/.local/bin
 That's the version, the commit it was built from and that commit's date, the Go version, and the platform.
 
 <Aside type="tip">
-However you install it, `dotsync init` copies the binary to `~/.local/bin/dotsync`. That copy is the one the background agent runs, so a `dotsync` elsewhere on your `PATH` is fine.
+`dotsync init` copies the binary to `~/.local/bin/dotsync`, and that copy is the one the background agent runs, so a `dotsync` elsewhere on your `PATH` is fine. The exception is a Homebrew or apt install: the agent runs the package's own binary, so the package manager's upgrades reach it.
 </Aside>
 
 ## Update
+
+If you installed with Homebrew, run `brew upgrade dotsync`; with apt, `sudo apt update && sudo apt upgrade`. `dotsync update` doesn't replace a binary a package manager owns: it tells you that command instead. Otherwise:
 
 ```sh
 dotsync update           # install the latest release: checksum and provenance verified

@@ -119,7 +119,7 @@ func (d *doctor) checkVersion() {
 	if latest, err := latestRelease(ctx); err == nil {
 		l, _ := parseSemver(latest)
 		if c, _ := parseSemver(cur); semverLess(c, l) {
-			d.add(checkInfo, "update available: "+cur+" → "+strings.TrimPrefix(latest, "v"), "", "dotsync update")
+			d.add(checkInfo, "update available: "+cur+" → "+strings.TrimPrefix(latest, "v"), "", upgradeHint())
 		}
 	}
 }
@@ -199,6 +199,13 @@ func (d *doctor) checkAgent(c *Ctx) {
 	}
 	if _, err := exec.LookPath("dotsync"); err != nil {
 		d.add(checkWarn, "dotsync is not on your PATH", "", "add "+tilde(filepath.Dir(c.Paths.Bin))+" to PATH")
+	}
+	if pm, ok := packaged(); ok {
+		// Left over from the install script: nothing updates it any more, and it may shadow
+		// the packaged binary on PATH.
+		if old := filepath.Join(homeDir(), ".local", "bin", "dotsync"); fileExists(old) {
+			d.add(checkWarn, tilde(old)+" is an old copy of dotsync; "+pm.name+" doesn't update it", "", "rm "+tilde(old))
+		}
 	}
 }
 

@@ -66,15 +66,27 @@ Most dotfile managers are **deployment tools**: you edit a repo, then run a comm
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh
+brew install pungoyal/tap/dotsync                                              # Homebrew (macOS, Linux)
+curl -fsSL https://raw.githubusercontent.com/pungoyal/dotsync/main/install.sh | sh   # or the install script
 ```
 
-The script downloads the right binary for your OS and CPU and **checks its SHA-256 checksum** before installing it to `~/.local/bin`. Later, **`dotsync update`** upgrades in place with the same checks. If the [GitHub CLI](https://cli.github.com) is installed, it also **verifies the build provenance attestation**. See [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/).
+On **Ubuntu and Debian**, install from the signed APT repository:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://pungoyal.github.io/dotsync/apt/dotsync.asc | sudo tee /etc/apt/keyrings/dotsync.asc >/dev/null
+curl -fsSL https://pungoyal.github.io/dotsync/apt/dotsync.sources | sudo tee /etc/apt/sources.list.d/dotsync.sources >/dev/null
+sudo apt update && sudo apt install dotsync
+```
+
+Homebrew and apt keep dotsync up to date like any other package.
+
+The install script downloads the right binary for your OS and CPU and **checks its SHA-256 checksum** before installing it to `~/.local/bin`. Later, **`dotsync update`** upgrades in place with the same checks. If the [GitHub CLI](https://cli.github.com) is installed, it also **verifies the build provenance attestation**. See [verifying releases](https://pungoyal.github.io/dotsync/project/verifying-releases/).
 
 <details>
 <summary>Other ways to install</summary>
 
-**Prebuilt binaries:** download from the [releases page](https://github.com/pungoyal/dotsync/releases). Builds exist for macOS and Linux, on amd64 and arm64.
+**Prebuilt binaries and `.deb` packages:** download from the [releases page](https://github.com/pungoyal/dotsync/releases). Builds exist for macOS and Linux, on amd64 and arm64.
 
 **With Go 1.23+:**
 
