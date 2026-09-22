@@ -41,6 +41,20 @@ dotsync 0.5.0 → 0.6.0
 background agent refreshed: launchd agent io.github.dotsync, every 300s
 `;
 
+export const importOut = `
+$ dotsync import stow ~/dotfiles
+found 4 packages, 12 links
+
+  PACKAGE  TARGET             KIND                     ACTION
+  git      ~/.gitconfig       file                     materialize + manage
+  fish     ~/.config/fish/    dir (folded)             materialize + manage
+  nvim     ~/.config/nvim/    dir (9 links, unfolded)  materialize + manage
+  ssh      ~/.ssh/id_ed25519  file                     SKIP: path looks like a secret (matches '.ssh/id_*')
+skipped secrets keep their link; re-run with --allow-secrets to import them too
+
+dry run: nothing changed. Re-run with --apply to replace 11 links and manage 3 entries.
+`;
+
 export const listOut = `
 $ dotsync list
 gitconfig  ->  ~/.gitconfig
@@ -57,7 +71,7 @@ dotsync <command> [flags] [arguments]
 
 - Flags can come before, between or after arguments. `-flag` and `--flag` are the same, and a value can follow a space or an `=`: `--interval 600` or `--interval=600`. `--` ends flag parsing.
 - `dotsync help <command>`, or `-h` after any command, prints its usage and flags.
-- Every command that changes something (`add`, `remove`, `set`, `describe`, `exclude`, `include` and `resolve`) runs a sync straight away, so you see the result immediately.
+- Every command that changes something (`add`, `remove`, `set`, `describe`, `exclude`, `include`, `resolve` and `import stow --apply`) runs a sync straight away, so you see the result immediately.
 - A command that needs the lock waits up to a minute for a running sync to finish.
 
 <CommandIndex />
@@ -111,6 +125,24 @@ Replaces this binary with the latest release, after the same checks as the insta
 If Homebrew or apt installed dotsync, `update` changes nothing and prints the package manager's command instead (`brew upgrade dotsync`, or `sudo apt install --only-upgrade dotsync`); `--check` works as usual.
 
 Binaries are replaced atomically, and nothing is replaced if a check fails. A development build, one without a release version, is only replaced when you pass `--version`. `update` looks up the latest release through the GitHub API; set `GITHUB_TOKEN` if you hit its rate limit.
+
+## import
+
+<CommandSynopsis name="import" />
+
+Moves this machine from [GNU Stow](https://www.gnu.org/software/stow/) to dotsync. It finds the symlinks in `$HOME` that point into the stow directory and shows what it would do. With `--apply` it replaces each link with a real copy of its content and starts managing it. The stow directory is only read, never changed. Name packages after the directory to import only those. Requires `dotsync init`.
+
+<CommandFlags name="import" />
+
+<Terminal code={importOut} />
+
+- A folded directory link becomes one directory entry. A directory Stow unfolded becomes one entry when everything in it belongs to a single package; otherwise its links are imported file by file. `$HOME`, `~/.local`, `~/.ssh`, `~/.gnupg` and the XDG base directories never become an entry, and neither does a directory that contains a file that looks like a secret: its files are imported one by one so the secret can be skipped. If Stow folded `~/.ssh` or `~/.gnupg` into a single link, that link is skipped.
+- Paths that are already managed (for example on a second machine) are only turned into real files; the manifest is not changed.
+- Files that look like [secrets](/dotsync/reference/secret-rules/) are skipped and keep their link. With `--apply`, the run ends by listing the paths that still link into the stow directory instead of saying it can be removed. `--allow-secrets` imports them too, and marks only those entries `allow_secrets`.
+- `dot-` names from `stow --dotfiles` are understood.
+- If a source file cannot be read, that entry is reported as FAILED and none of its links is touched; the other entries are still imported and the exit code is 1. If a replacement still fails partway through a directory, the command names the files it already turned into real files and the `dotsync add <directory>` that brings the whole entry under management.
+
+See [Migrate from another tool](/dotsync/guides/migrate/).
 
 ## add
 
