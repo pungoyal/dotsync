@@ -38,8 +38,8 @@ jobs:
           node-version: "26" # keep in step with mise.toml
           cache: npm
           cache-dependency-path: website/package-lock.json
-      - run: npm ci
-      - run: npm run build
+      - run: make docs
+        working-directory: .
       # Needs secrets.APT_SIGNING_KEY (see CONTRIBUTING.md); without it the site deploys
       # without the APT repository.
       - name: Add the APT repository
