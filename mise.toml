@@ -6,4 +6,4 @@ golangci-lint = "2.13"
 actionlint = "1.7"
 goreleaser = "2.18"
 shellcheck = "0.11"
-"aqua:anchore/syft" = "latest" # SBOMs for the release snapshot
+"aqua:anchore/syft" = "1.51" # SBOMs for the release snapshot; in step with download-syft in ci.yml
