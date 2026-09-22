@@ -31,7 +31,7 @@ description: What dotsync trusts, what it defends against and what it doesn't, w
 
 Encryption means getting a key onto every machine. That key becomes a new secret to bootstrap, rotate and lose, and a single point of compromise. Keeping secrets **out** of the repository is simpler, and fails safe. Use a password manager or the OS keychain for secrets, and let dotsync handle configuration.
 
-dotsync doesn't encrypt anything itself, but it doesn't stand in the way if **you** do. Files already encrypted with [age](https://age-encryption.org) or [sops](https://getsops.io), for example by mise, are ciphertext, so they sync like any other file. Getting the key to each machine is then up to you, and dotsync keeps its side of it: it refuses to sync age private keys, by path and by content. It recognizes encrypted **file formats**, not the tools that write them, so this works whichever tool you use. See [encrypted files](/dotsync/reference/secret-rules/#encrypted-files).
+dotsync doesn't encrypt anything itself, but it doesn't stand in the way if **you** do. Files encrypted with [age](https://age-encryption.org) or [sops](https://getsops.io), and age-encrypted values such as mise writes into its configuration, are ciphertext, so they sync like any other file. Getting the key to each machine is then up to you, and dotsync keeps its side of it: it refuses to sync age private keys, by path and by content. It recognizes encrypted **formats**, not the tools that write them, so this works whichever tool you use. See [Encrypt secrets that should sync](/dotsync/guides/secrets/#encrypt-secrets-that-should-sync).
 
 ## What dotsync sends, and to whom
 

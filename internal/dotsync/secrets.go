@@ -2,6 +2,7 @@ package dotsync
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -71,7 +72,7 @@ func secretContentReason(data []byte) string {
 			continue
 		}
 		if f != nil && f.values != nil {
-			line = f.values.ReplaceAll(line, nil)
+			line = f.values(line)
 		}
 		for _, r := range secretContent {
 			if r.re.Match(line) {
@@ -105,16 +106,14 @@ func secretReason(path string, o *Obj) string {
 // cipherFormat recognises an encrypted file format.
 type cipherFormat struct {
 	detect func(data []byte) bool
-	values *regexp.Regexp // encrypted values in an otherwise readable file; nil when the whole file is ciphertext
+	values func(line []byte) []byte // removes the encrypted values from a line of an otherwise readable file; nil when the whole file is ciphertext
 }
 
 // cipherFormats are the encrypted formats dotsync recognises. They're data: the code above
-// never refers to a format by name.
+// never refers to a format by name, and none of them names the tool that writes it.
 var cipherFormats = []cipherFormat{
 	// age, binary: the version line, recipient stanzas, then the header MAC line ("--- …").
-	{detect: func(d []byte) bool {
-		return bytes.HasPrefix(d, []byte("age-encryption.org/v1\n")) && bytes.Contains(d[:min(len(d), 64<<10)], []byte("\n--- "))
-	}},
+	{detect: isAgeFile},
 	// age, ASCII armor: nothing but base64 between the armor lines.
 	{detect: func(d []byte) bool {
 		return armored(d, []byte("-----BEGIN AGE ENCRYPTED FILE-----"), []byte("-----END AGE ENCRYPTED FILE-----"))
@@ -123,8 +122,68 @@ var cipherFormats = []cipherFormat{
 	// encrypted individually.
 	{
 		detect: regexp.MustCompile(`(?m)(?:"mac"\s*:\s*"|^\s*mac:\s*|^\s*mac\s*=\s*"?|^sops_mac=)ENC\[AES256_GCM,`).Match,
-		values: regexp.MustCompile(`ENC\[AES256_GCM,[^\]]*\]`),
+		values: removeAll(regexp.MustCompile(`ENC\[AES256_GCM,[^\]]*\]`)),
 	},
+	// age values in a readable file (TOML, YAML, JSON, dotenv…): base64 of an age file, optionally
+	// zstd-compressed, as mise's age-encrypted environment variables are stored.
+	{
+		detect: func(d []byte) bool {
+			for _, m := range base64Run.FindAll(d, -1) {
+				if isAgeValue(m) {
+					return true
+				}
+			}
+			return false
+		},
+		values: func(line []byte) []byte {
+			return base64Run.ReplaceAllFunc(line, func(m []byte) []byte {
+				if isAgeValue(m) {
+					return nil
+				}
+				return m
+			})
+		},
+	},
+}
+
+func removeAll(re *regexp.Regexp) func([]byte) []byte {
+	return func(line []byte) []byte { return re.ReplaceAll(line, nil) }
+}
+
+var ageHeader = []byte("age-encryption.org/v1\n")
+
+// isAgeFile reports whether d is age ciphertext: the version line, then a header ending in its
+// MAC line.
+func isAgeFile(d []byte) bool {
+	return bytes.HasPrefix(d, ageHeader) && bytes.Contains(d[:min(len(d), 64<<10)], []byte("\n--- "))
+}
+
+// base64Run matches a whole run of base64 long enough to hold an age header; a leftmost greedy
+// match always starts and ends at the run's boundaries.
+var base64Run = regexp.MustCompile(`[A-Za-z0-9+/]{40,}={0,2}`)
+
+var zstdMagic = []byte{0x28, 0xb5, 0x2f, 0xfd}
+
+// isAgeValue reports whether b64 decodes to an age file, or to a zstd frame holding one.
+// Ciphertext doesn't compress, so zstd stores it in a raw block: the age file then starts right
+// after the frame and block headers (at most 21 bytes), unchanged.
+func isAgeValue(b64 []byte) bool {
+	enc := base64.StdEncoding
+	if !bytes.HasSuffix(b64, []byte("=")) && len(b64)%4 != 0 {
+		enc = base64.RawStdEncoding
+	}
+	d := make([]byte, enc.DecodedLen(len(b64)))
+	n, err := enc.Decode(d, b64)
+	if err != nil {
+		return false
+	}
+	d = d[:n]
+	if bytes.HasPrefix(d, zstdMagic) {
+		if i := bytes.Index(d[:min(len(d), 32)], ageHeader); i > 0 {
+			d = d[i:]
+		}
+	}
+	return isAgeFile(d)
 }
 
 func cipherFormatOf(data []byte) *cipherFormat {
