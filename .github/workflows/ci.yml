@@ -40,8 +40,7 @@ jobs:
             ~/.cache/go-build
             ~/Library/Caches/go-build
           key: gobuild-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go${{ steps.go.outputs.go-version }}
-      - run: go vet ./...
-      - run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - run: make test TESTFLAGS=-coverprofile=coverage.out
       - run: go tool cover -func=coverage.out | tail -1
 
   minimum-go:
@@ -53,8 +52,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
-      - run: go build ./...
+          go-version-file: go.mod # so `make min-go` needs no toolchain download
+      - run: make min-go
 
   lint:
     runs-on: ubuntu-latest
@@ -68,12 +67,9 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.13
-      - name: gofmt
-        run: test -z "$(gofmt -l .)" || { gofmt -d .; exit 1; }
-      - name: shellcheck
-        run: shellcheck install.sh scripts/*.sh packaging/*/*.sh
-      - name: actionlint
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+          install-only: true
+      # golangci-lint's gofmt formatter fails on unformatted files; shellcheck is on the runner.
+      - run: make lint actionlint
 
   fuzz-targets:
     runs-on: ubuntu-latest
@@ -85,7 +81,7 @@ jobs:
           persist-credentials: false
       - id: list
         run: |
-          targets=$(grep -ho '^func Fuzz[A-Za-z0-9_]*' internal/dotsync/*_test.go | cut -d' ' -f2 | jq -Rsc 'split("\n") | map(select(. != ""))')
+          targets=$(make -s fuzz-targets | jq -Rsc 'split("\n") | map(select(. != ""))')
           test "$targets" != "[]"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
@@ -114,7 +110,7 @@ jobs:
             ~/.cache/go-build
             ~/Library/Caches/go-build
           key: gobuild-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-go${{ steps.go.outputs.go-version }}
-      - run: go test -run='^$' -fuzz="^${TARGET}\$" -fuzztime=30s ./internal/dotsync
+      - run: make fuzz FUZZ="$TARGET"
         env:
           TARGET: ${{ matrix.target }}
 
@@ -124,10 +120,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-input: stable
-          cache: false
+          go-version: stable
+      - run: make vulncheck
 
   release-check:
     name: goreleaser snapshot
@@ -153,7 +149,8 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --snapshot --clean
+          install-only: true
+      - run: make snapshot
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
       - name: smoke test
