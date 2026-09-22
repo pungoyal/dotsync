@@ -9,7 +9,7 @@ on:
     branches: [main]
     paths: ["website/**", "packaging/apt/**", ".github/workflows/docs.yml"]
   pull_request:
-    paths: ["website/**", ".github/workflows/docs.yml"]
+    paths: ["website/**", "Makefile", ".github/workflows/docs.yml"]
   workflow_dispatch:
 
 permissions:
