@@ -2,6 +2,7 @@ package dotsync
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -763,9 +764,20 @@ func formatKind(data []byte) string {
 	case f.values == nil:
 		return "age" // entirely ciphertext
 	default:
-		return "sops" // encrypted values
+		return "values" // encrypted values in a readable file
 	}
 }
+
+// ageFile is a minimal age file: version line, one recipient stanza, header MAC, payload.
+var ageFile = "age-encryption.org/v1\n-> X25519 abc\nZGVm\n--- bWFj\n\x00\xff\x10\x80"
+
+// zstdRaw wraps data in a zstd frame with a single raw block, as zstd stores incompressible data.
+func zstdRaw(data string) string {
+	n := len(data)<<3 | 1 // last block, type raw
+	return "\x28\xb5\x2f\xfd\x00\x58" + string([]byte{byte(n), byte(n >> 8), byte(n >> 16)}) + data
+}
+
+func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 func TestEncryptedFiles(t *testing.T) {
 	w := newWorld(t)
@@ -777,23 +789,36 @@ func TestEncryptedFiles(t *testing.T) {
 		enc          string
 		blocked      bool
 	}{
-		{".config/mise/.env.yaml", sopsYAML, "sops", false},
-		{".config/mise/.env.json", sopsJSON, "sops", false},
-		{"app/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "sops", false},
-		{".env", "API_KEY=ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]\nsops_mac=ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]\n", "sops", false},
+		{".config/mise/.env.yaml", sopsYAML, "values", false},
+		{".config/mise/.env.json", sopsJSON, "values", false},
+		{"app/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "values", false},
+		{".env", "API_KEY=ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]\nsops_mac=ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]\n", "values", false},
 		{"secrets/prod.env.age", ageArmored, "age", false},
 		{"secrets/prod.env.age", "age-encryption.org/v1\n-> X25519 abc\nZGVm\n--- bWFj\n\x00\xff", "age", false},
 		// The age header alone isn't enough: plaintext after it is scanned (and the path refused).
 		{"secrets/prod.env.age", "age-encryption.org/v1\npassword = hunter2!xyz\n", "", true},
 		// In sops files only the ENC[…] values are skipped: a plaintext secret on the same line
 		// (e.g. a minified JSON file) is still found.
-		{".config/mise/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","token":"ghp_` + strings.Repeat("a", 36) + `","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "sops", true},
+		{".config/mise/.env.json", `{"k":"ENC[AES256_GCM,data:eA==,iv:A,tag:B,type:str]","token":"ghp_` + strings.Repeat("a", 36) + `","sops":{"mac":"ENC[AES256_GCM,data:bQ==,iv:A,tag:B,type:str]"}}`, "values", true},
 		// sops leaves keys and comments readable; those are still scanned.
-		{".config/mise/.env.yaml", "# token: " + "ghp_" + strings.Repeat("a", 36) + "\n" + sopsYAML, "sops", true},
+		{".config/mise/.env.yaml", "# token: " + "ghp_" + strings.Repeat("a", 36) + "\n" + sopsYAML, "values", true},
 		// ENC[…] lines are only skipped in real sops files.
 		{"notes.txt", "ENC[AES256_GCM,data:x] token: ghp_" + strings.Repeat("a", 36) + "\n", "", true},
 		// Plaintext between age armor lines isn't ciphertext.
 		{"secrets/prod.env.age", "-----BEGIN AGE ENCRYPTED FILE-----\npassword = hunter2!xyz\n-----END AGE ENCRYPTED FILE-----\n", "", true},
+		// age values embedded in a readable file, plain or zstd-compressed (mise's two formats), and
+		// in other formats: the path rules don't apply, and neither do the content rules to the value.
+		{".config/mise/conf.d/secrets.toml", "[env]\nGITHUB_TOKEN = { age = \"" + b64(ageFile) + "\" }\n", "values", false},
+		{".config/mise/conf.d/secrets.toml", "[env]\nDB_PASSWORD = { age = { value = \"" + b64(zstdRaw(ageFile)) + "\", format = \"zstd\" } }\n", "values", false},
+		{".config/app/.env", "API_TOKEN=" + strings.TrimRight(b64(ageFile), "=") + "\n", "values", false},
+		{".config/app/config.yaml", "api:\n  token: '" + b64(ageFile) + "'\n", "values", false},
+		// Everything else in such a file is still scanned, on other lines and on the same line.
+		{".config/mise/config.toml", "[env]\nA = { age = \"" + b64(ageFile) + "\" }\nB = \"ghp_" + strings.Repeat("a", 36) + "\"\n", "values", true},
+		{".config/app/config.json", `{"a": {"age": "` + b64(ageFile) + `"}, "password": "hunter2!xyz"}`, "values", true},
+		// base64 that isn't age ciphertext is plaintext as far as the rules are concerned.
+		{".config/app/config.yaml", "token: '" + b64("hunter2hunter2hunter2hunter2hunter2") + "'\n", "", true},
+		{".config/app/config.yaml", "token: '" + b64(zstdRaw("hunter2hunter2hunter2hunter2hunter2")) + "'\n", "", true},
+		{".config/app/config.yaml", "token: '" + b64("age-encryption.org/v1\npassword = hunter2!xyz\n") + "'\n", "", true},
 		// Unencrypted files named like secrets are still refused.
 		{".config/mise/.env.json", `{"API_KEY": "abc"}`, "", true},
 	} {
@@ -813,6 +838,8 @@ func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
 	a.init()
 	a.write(".config/mise/config.toml", "[env]\n_.file = \".env.yaml\"\n")
 	a.write(".config/mise/.env.yaml", sopsYAML)
+	ageValues := "[env]\nDB_PASSWORD = { age = \"" + b64(ageFile) + "\" }\n"
+	a.write(".config/mise/conf.d/secrets.toml", ageValues)
 	a.write(".config/mise/age.txt", fakeAgeKey+"\n")
 	out := a.ok("add", a.path(".config/mise"))
 	if !strings.Contains(out, "1 file(s) under ~/.config/mise look like secrets") || !strings.Contains(out, "age.txt") {
@@ -821,9 +848,13 @@ func TestEncryptedSecretsSyncInManagedDirectory(t *testing.T) {
 	if w.remoteFile("mise/.env.yaml") != sopsYAML {
 		t.Fatal("sops file was not sent")
 	}
+	if w.remoteFile("mise/conf.d/secrets.toml") != ageValues {
+		t.Fatal("file with age values was not sent")
+	}
 
 	b.init()
 	b.expect(".config/mise/.env.yaml", sopsYAML)
+	b.expect(".config/mise/conf.d/secrets.toml", ageValues)
 	if b.exists(".config/mise/age.txt") {
 		t.Fatal("age key reached another machine")
 	}
