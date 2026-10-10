@@ -10,25 +10,50 @@ Moving to dotsync always takes the same three steps: make sure the **real files*
 <Tabs>
 <TabItem label="GNU Stow / symlinks">
 
-Your dotfiles are symlinks into a directory like `~/dotfiles`. dotsync follows a symlinked target as long as the file it points to is inside your home directory, so you can start straight away. For a clean result that no longer depends on the old directory, replace the links with real files first:
+Your dotfiles are symlinks into a directory like `~/dotfiles`. `dotsync import stow` finds those links, replaces them with real files, and starts managing them. It only ever reads the stow directory.
 
 <Steps>
 
-1. Turn each link into a regular file:
+1. On one machine, set up dotsync and look at the plan. Nothing changes yet:
 
    ```sh
-   # Linux (GNU coreutils)
-   for f in ~/.gitconfig ~/.zshrc; do cp --remove-destination "$(readlink -f "$f")" "$f"; done
-   # macOS
-   for f in ~/.gitconfig ~/.zshrc; do src=$(readlink "$f"); rm "$f"; cp "$src" "$f"; done
+   dotsync init <new-url>
+   dotsync import stow ~/dotfiles
    ```
 
-   For a linked directory, `stow -D <package>` removes the links; then copy the package's files into place.
+   ```console
+   found 4 packages, 12 links
 
-2. `dotsync init <new-url>`, and `dotsync add` the real paths.
-3. On every other machine, run `stow -D` for the migrated packages, then `dotsync init <new-url>`.
+     PACKAGE  TARGET             KIND                     ACTION
+     git      ~/.gitconfig       file                     materialize + manage
+     fish     ~/.config/fish/    dir (folded)             materialize + manage
+     nvim     ~/.config/nvim/    dir (9 links, unfolded)  materialize + manage
+     ssh      ~/.ssh/id_ed25519  file                     SKIP: …
+
+   dry run: nothing changed. Re-run with --apply to replace 11 links and manage 3 entries.
+   ```
+
+   Name packages after the directory to import only some of them: `dotsync import stow ~/dotfiles git nvim`.
+
+2. Apply it:
+
+   ```sh
+   dotsync import stow ~/dotfiles --apply
+   ```
+
+3. On every other machine, `dotsync init <new-url>` is enough to start syncing. dotsync follows a managed path that is still a symlink, and replaces per-file links inside a managed directory with the shared files (after backing them up).
+
+4. To stop depending on `~/dotfiles` on such a machine, run the same import there. The entries are already shared, so it only turns the remaining links into real files:
+
+   ```sh
+   dotsync import stow ~/dotfiles --apply
+   ```
 
 </Steps>
+
+<Aside>Keep `~/dotfiles` until every machine has run the import. If a run skipped anything (it says which paths still link into the directory), those files still live there — move them into place yourself before removing it. When nothing was skipped, nothing points into it any more and you can archive or delete it. There is no need to run `stow -D`.</Aside>
+
+A directory becomes one entry only when everything in it belongs to a single Stow package. Shared directories such as `~/.config` or `~/bin` are imported file by file, and so is any directory holding a file that looks like a secret. `~/.ssh` and `~/.gnupg` are never managed as a whole. Files that look like secrets are skipped and keep their link; see [secret rules](/dotsync/reference/secret-rules/).
 
 </TabItem>
 <TabItem label="yadm / bare git">

@@ -113,6 +113,8 @@ git clone https://github.com/pungoyal/dotsync && cd dotsync && make build   # â†
    dotsync add ~/.gitconfig ~/.config/fish/config.fish ~/.config/nvim
    ```
 
+   Coming from GNU Stow? `dotsync import stow ~/dotfiles` does this step for you; see [migrating](https://pungoyal.github.io/dotsync/guides/migrate/).
+
 3. **On every other machine**, run the same `init`. Managed files show up. If a local file already existed and differed, it is backed up first and then replaced with the shared version.
 
 4. **That's it.** Edit files as you normally would; they sync every 5 minutes. Run `dotsync doctor` to check the setup, and `dotsync status` any time to see what's going on.

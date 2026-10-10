@@ -82,6 +82,32 @@
           "usage": "dotsync agent install|uninstall|status",
           "summary": "manage the background agent",
           "flags": []
+        },
+        {
+          "name": "import",
+          "args": "stow <dir> [package...]",
+          "usage": "dotsync import stow [options] <stow-dir> [package...]",
+          "summary": "move from GNU Stow: replace its symlinks with real files and manage them",
+          "flags": [
+            {
+              "names": [
+                "--allow-secrets"
+              ],
+              "usage": "also import files that look like secrets (only those entries are marked allow_secrets)"
+            },
+            {
+              "names": [
+                "--apply"
+              ],
+              "usage": "replace the links with real files and manage them (default: only show the plan)"
+            },
+            {
+              "names": [
+                "--no-sync"
+              ],
+              "usage": "only queue the change; the next sync pushes it"
+            }
+          ]
         }
       ]
     },
