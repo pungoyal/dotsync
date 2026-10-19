@@ -36,7 +36,7 @@ jobs:
       # With a GitHub App configured (vars.RELEASE_APP_CLIENT_ID, secrets.RELEASE_APP_PRIVATE_KEY),
       # release-please acts as that app, so the release PR's CI runs like any other PR's. Without
       # it, GITHUB_TOKEN is used and the next step starts the checks instead.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         if: vars.RELEASE_APP_CLIENT_ID != ''
         with:
@@ -87,7 +87,7 @@ jobs:
         with:
           go-version: stable
       - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
-      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -126,7 +126,7 @@ jobs:
     steps:
       - id: tap
         run: echo "name=${TAP#*/}" >> "$GITHUB_OUTPUT"
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         if: vars.RELEASE_APP_CLIENT_ID != ''
         with:
